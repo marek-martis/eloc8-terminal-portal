@@ -1,36 +1,148 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# eLOC8 Terminal Portal
+
+A logistics-focused dashboard for real-time GPS device tracking, built with Next.js and integrated with ThingsBoard IoT platform.
+
+## Features
+
+### Dashboard & Device Management
+- Fleet overview with device statistics (total, active, inactive)
+- Device list with filtering and real-time status updates
+- Interactive map with Leaflet for GPS device visualization
+- WebSocket integration for live telemetry updates
+
+### Analytics & Reporting
+- Historical telemetry charts (speed, battery, signal strength)
+- Device activity timeline (online/offline events)
+- Fleet utilization metrics
+- Export reports to CSV and PDF
+- Custom date range filtering with presets
+
+### Stale Device Tracking
+- Daily snapshot system for tracking inactive devices over time
+- Date comparison with new additions and removals reports
+- Configurable stale threshold (1 day to 1 month)
+- Filter by device profile
+- Cron-triggerable API endpoint for automation
+
+## Tech Stack
+
+- **Framework**: Next.js 16 with App Router
+- **Frontend**: React 19, TypeScript, Tailwind CSS v4
+- **Database**: PostgreSQL with Prisma ORM
+- **State Management**: TanStack Query (server), Zustand (client)
+- **Forms & Validation**: react-hook-form, Zod
+- **Maps**: Leaflet / react-leaflet
+- **IoT Backend**: ThingsBoard
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Node.js 18+
+- PostgreSQL database
+- ThingsBoard instance
+
+### Environment Variables
+
+Create a `.env` file with:
+
+```env
+DATABASE_URL="postgresql://user:password@localhost:5432/eloc8"
+THINGSBOARD_URL="https://your-thingsboard-instance.com"
+NEXT_PUBLIC_THINGSBOARD_WS_URL="wss://your-thingsboard-instance.com"
+JWT_SECRET="your-32-byte-secret-key"
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Installation
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+# Install dependencies
+npm install
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# Generate Prisma client
+npx prisma generate
 
-## Learn More
+# Run database migrations
+npx prisma migrate dev
 
-To learn more about Next.js, take a look at the following resources:
+# Start development server
+npm run dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Open [http://localhost:3000](http://localhost:3000) to access the portal.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Docker Deployment
 
-## Deploy on Vercel
+```bash
+# Start PostgreSQL for local development
+docker-compose up -d postgres
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+# Start full production stack (app, postgres, nginx)
+docker-compose up -d
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Project Structure
+
+```
+src/
+├── app/
+│   ├── (dashboard)/      # Protected routes with sidebar layout
+│   │   ├── page.tsx      # Dashboard home
+│   │   ├── map/          # Live map view
+│   │   ├── devices/      # Device list
+│   │   ├── analytics/    # Charts and metrics
+│   │   ├── stale-devices/# Stale device tracking
+│   │   └── settings/     # User preferences
+│   ├── login/            # Public login page
+│   └── api/              # API routes
+├── components/
+│   ├── ui/               # Reusable UI components
+│   ├── layout/           # Header, sidebar
+│   ├── map/              # Map components
+│   └── charts/           # Chart components
+├── hooks/                # React Query hooks
+├── lib/
+│   ├── thingsboard/      # ThingsBoard client
+│   └── prisma.ts         # Database client
+└── providers/            # Context providers
+```
+
+## Available Scripts
+
+```bash
+npm run dev          # Start development server
+npm run build        # Production build
+npm run lint         # Run ESLint
+npx prisma studio    # Open Prisma database GUI
+```
+
+## Authentication
+
+The portal authenticates users against ThingsBoard:
+
+1. User submits credentials to `/api/auth/login`
+2. Credentials are validated against ThingsBoard API
+3. ThingsBoard tokens are encrypted and stored
+4. App issues its own JWT cookie (`eloc8-token`)
+5. Middleware protects all routes except `/login`
+
+## API Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /api/auth/login` | Authenticate user |
+| `POST /api/auth/logout` | End session |
+| `GET /api/devices` | List all devices |
+| `GET /api/devices/stats` | Device statistics |
+| `GET /api/telemetry` | Latest telemetry |
+| `GET /api/telemetry/history` | Historical telemetry |
+| `GET /api/analytics/fleet` | Fleet metrics |
+| `GET /api/events` | Device events |
+| `GET /api/stale-devices` | Stale device snapshots |
+| `POST /api/stale-devices/snapshot` | Trigger snapshot |
+| `GET /api/export/csv` | Export to CSV |
+| `GET /api/export/pdf` | Export to PDF |
+
+## License
+
+Private - All rights reserved

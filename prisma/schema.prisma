@@ -1,0 +1,237 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// User preferences and settings (synced from ThingsBoard)
+model User {
+  id                String    @id @default(uuid())
+  thingsboardId     String    @unique @map("thingsboard_id")
+  email             String    @unique
+  name              String?
+  role              UserRole  @default(USER)
+  preferences       Json?     @default("{}")
+  defaultMapCenter  Json?     @map("default_map_center")
+  defaultZoom       Int?      @default(12) @map("default_zoom")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  lastLoginAt       DateTime? @map("last_login_at")
+
+  savedFilters      SavedFilter[]
+  dashboardLayouts  DashboardLayout[]
+  alerts            Alert[]
+  auditLogs         AuditLog[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  USER
+  VIEWER
+}
+
+// Saved map/device filters for quick access
+model SavedFilter {
+  id          String     @id @default(uuid())
+  userId      String     @map("user_id")
+  name        String
+  filterType  FilterType @map("filter_type")
+  criteria    Json
+  isDefault   Boolean    @default(false) @map("is_default")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("saved_filters")
+}
+
+enum FilterType {
+  DEVICE
+  MAP
+  ANALYTICS
+}
+
+// Custom dashboard layouts
+model DashboardLayout {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  name      String
+  layout    Json
+  widgets   Json
+  isDefault Boolean  @default(false) @map("is_default")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("dashboard_layouts")
+}
+
+// App-specific alerts and notifications
+model Alert {
+  id                  String        @id @default(uuid())
+  userId              String        @map("user_id")
+  deviceId            String?       @map("device_id")
+  thingsboardDeviceId String?       @map("thingsboard_device_id")
+  type                AlertType
+  severity            AlertSeverity
+  title               String
+  message             String
+  metadata            Json?
+  isRead              Boolean       @default(false) @map("is_read")
+  isDismissed         Boolean       @default(false) @map("is_dismissed")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  readAt              DateTime?     @map("read_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([deviceId])
+  @@index([createdAt])
+  @@map("alerts")
+}
+
+enum AlertType {
+  DEVICE_OFFLINE
+  GEOFENCE_BREACH
+  LOW_BATTERY
+  MAINTENANCE_DUE
+  CUSTOM
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+// Geofence definitions
+model Geofence {
+  id          String       @id @default(uuid())
+  name        String
+  description String?
+  type        GeofenceType
+  coordinates Json
+  metadata    Json?
+  isActive    Boolean      @default(true) @map("is_active")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  @@map("geofences")
+}
+
+enum GeofenceType {
+  TERMINAL
+  YARD
+  TRANSIT_ZONE
+  RESTRICTED
+}
+
+// Device metadata cache (reduce ThingsBoard API calls)
+model DeviceCache {
+  id                String    @id @default(uuid())
+  thingsboardId     String    @unique @map("thingsboard_id")
+  name              String
+  type              String
+  label             String?
+  attributes        Json?
+  lastKnownLocation Json?     @map("last_known_location")
+  lastTelemetryAt   DateTime? @map("last_telemetry_at")
+  isOnline          Boolean   @default(false) @map("is_online")
+  cachedAt          DateTime  @default(now()) @map("cached_at")
+  expiresAt         DateTime  @map("expires_at")
+
+  @@index([type])
+  @@index([isOnline])
+  @@map("device_cache")
+}
+
+// Audit log for compliance
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?  @map("user_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  details    Json?
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// Analytics aggregations (pre-computed for performance)
+model AnalyticsSnapshot {
+  id          String   @id @default(uuid())
+  period      String
+  periodStart DateTime @map("period_start")
+  periodEnd   DateTime @map("period_end")
+  metrics     Json
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([period, periodStart])
+  @@index([periodStart])
+  @@map("analytics_snapshots")
+}
+
+// Daily snapshot of stale devices for tracking over time
+model StaleDeviceSnapshot {
+  id           String              @id @default(uuid())
+  snapshotDate DateTime            @unique @map("snapshot_date") @db.Date
+  staleDays    Int                 @default(2) @map("stale_days")
+  totalDevices Int                 @map("total_devices")
+  staleCount   Int                 @map("stale_count")
+  createdAt    DateTime            @default(now()) @map("created_at")
+
+  devices      StaleDeviceRecord[]
+
+  @@index([snapshotDate])
+  @@map("stale_device_snapshots")
+}
+
+// Individual stale device records within a snapshot
+model StaleDeviceRecord {
+  id                   String              @id @default(uuid())
+  snapshotId           String              @map("snapshot_id")
+  thingsboardDeviceId  String              @map("thingsboard_device_id")
+  deviceName           String              @map("device_name")
+  deviceType           String              @map("device_type")
+  deviceProfileId      String?             @map("device_profile_id")
+  lastActivityAt       DateTime?           @map("last_activity_at")
+  daysSinceActivity    Int                 @map("days_since_activity")
+  firstSeenStaleAt     DateTime            @map("first_seen_stale_at")
+  consecutiveStaleDays Int                 @default(1) @map("consecutive_stale_days")
+
+  snapshot      StaleDeviceSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  deviceProfile DeviceProfile?      @relation(fields: [deviceProfileId], references: [id])
+
+  @@index([snapshotId])
+  @@index([thingsboardDeviceId])
+  @@map("stale_device_records")
+}
+
+model DeviceProfile {
+  id                  String              @id @default(uuid())
+  thingsboardId       String              @unique @map("thingsboard_id")
+  name                String              @unique
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+  staleDeviceRecords  StaleDeviceRecord[]
+
+  @@map("device_profiles")
+}
