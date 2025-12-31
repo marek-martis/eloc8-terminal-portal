@@ -11,7 +11,7 @@ A logistics-focused dashboard for real-time GPS device tracking, built with Next
 - WebSocket integration for live telemetry updates
 
 ### Analytics & Reporting
-- Historical telemetry charts (speed, battery, signal strength)
+- Historical telemetry charts (vbat)
 - Device activity timeline (online/offline events)
 - Fleet utilization metrics
 - Export reports to CSV and PDF
@@ -132,11 +132,12 @@ The portal authenticates users against ThingsBoard:
 |----------|-------------|
 | `POST /api/auth/login` | Authenticate user |
 | `POST /api/auth/logout` | End session |
-| `GET /api/devices` | List all devices |
+| `GET /api/devices` | List devices (supports `status`, `sortBy`, `sortDir`) |
 | `GET /api/devices/stats` | Device statistics |
 | `GET /api/telemetry` | Latest telemetry |
 | `GET /api/telemetry/history` | Historical telemetry |
 | `GET /api/analytics/fleet` | Fleet metrics |
+| `GET /api/devices/type-summary` | Device type counts for analytics |
 | `GET /api/events` | Device events |
 | `GET /api/stale-devices` | Stale device snapshots |
 | `POST /api/stale-devices/snapshot` | Trigger snapshot |
