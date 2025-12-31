@@ -1,25 +1,17 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { jwtVerify } from "jose";
 import { prisma } from "@/lib/prisma";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "fallback-secret-change-in-production"
-);
+import { getSession } from "@/lib/auth";
 
 export async function GET() {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("eloc8-token")?.value;
+    const session = await getSession();
 
-    if (!token) {
+    if (!session) {
       return NextResponse.json({ user: null }, { status: 401 });
     }
 
-    const { payload } = await jwtVerify(token, JWT_SECRET);
-
     const user = await prisma.user.findUnique({
-      where: { id: payload.userId as string },
+      where: { id: session.userId },
       select: {
         id: true,
         email: true,
@@ -37,7 +29,7 @@ export async function GET() {
 
     return NextResponse.json({
       user,
-      accessToken: payload.tbToken,
+      accessToken: session.tbToken,
     });
   } catch (error) {
     console.error("Session error:", error);

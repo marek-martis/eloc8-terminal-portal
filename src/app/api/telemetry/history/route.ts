@@ -1,34 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { jwtVerify } from "jose";
 import { createThingsboardClient } from "@/lib/thingsboard";
 import { AGGREGATION_TYPES } from "@/lib/constants";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "fallback-secret-change-in-production"
-);
+import { getSession } from "@/lib/auth";
 
 type AggregationType = keyof typeof AGGREGATION_TYPES;
 
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("eloc8-token")?.value;
+    const session = await getSession();
 
-    if (!token) {
+    if (!session) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
-
-    let payload;
-    try {
-      const verified = await jwtVerify(token, JWT_SECRET);
-      payload = verified.payload;
-    } catch (jwtError) {
-      console.error("JWT verification failed:", jwtError);
-      return NextResponse.json(
-        { message: "Invalid token" },
-        { status: 401 }
-      );
     }
 
     const searchParams = request.nextUrl.searchParams;
@@ -87,8 +69,8 @@ export async function GET(request: NextRequest) {
     }
 
     const tbClient = createThingsboardClient({
-      accessToken: payload.tbToken as string,
-      refreshToken: payload.tbRefreshToken as string,
+      accessToken: session.tbToken,
+      refreshToken: session.tbRefreshToken,
     });
 
     const keysArray = keys.split(",").map((k) => k.trim());

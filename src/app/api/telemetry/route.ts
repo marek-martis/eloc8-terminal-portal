@@ -1,22 +1,14 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { jwtVerify } from "jose";
 import { createThingsboardClient } from "@/lib/thingsboard";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "fallback-secret-change-in-production"
-);
+import { getSession } from "@/lib/auth";
 
 export async function GET(request: Request) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("eloc8-token")?.value;
+    const session = await getSession();
 
-    if (!token) {
+    if (!session) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
-
-    const { payload } = await jwtVerify(token, JWT_SECRET);
 
     const { searchParams } = new URL(request.url);
     const deviceId = searchParams.get("deviceId");
@@ -30,8 +22,8 @@ export async function GET(request: Request) {
     }
 
     const tbClient = createThingsboardClient({
-      accessToken: payload.tbToken as string,
-      refreshToken: payload.tbRefreshToken as string,
+      accessToken: session.tbToken,
+      refreshToken: session.tbRefreshToken,
     });
 
     const telemetry = await tbClient.getLatestTelemetry(deviceId, keys);

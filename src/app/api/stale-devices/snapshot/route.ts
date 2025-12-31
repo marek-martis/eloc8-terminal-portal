@@ -1,14 +1,9 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { jwtVerify } from "jose";
 import { startOfDay, subDays } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { createThingsboardClient } from "@/lib/thingsboard";
 import { DEFAULT_STALE_DAYS } from "@/lib/constants";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "fallback-secret-change-in-production"
-);
+import { getSession } from "@/lib/auth";
 
 const CRON_API_KEY = process.env.CRON_API_KEY;
 
@@ -18,38 +13,14 @@ const CRON_API_KEY = process.env.CRON_API_KEY;
  */
 export async function POST(request: Request) {
   try {
-    // Check for cron API key if configured
-    if (CRON_API_KEY) {
-      const apiKey = request.headers.get("x-api-key");
-      if (apiKey !== CRON_API_KEY) {
-        // Fall back to JWT auth if no API key match
-        const cookieStore = await cookies();
-        const token = cookieStore.get("eloc8-token")?.value;
+    // Check for cron API key or valid session
+    const apiKey = request.headers.get("x-api-key");
+    const isCronAuth = CRON_API_KEY && apiKey === CRON_API_KEY;
 
-        if (!token) {
-          return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-        }
+    const session = await getSession();
 
-        try {
-          await jwtVerify(token, JWT_SECRET);
-        } catch {
-          return NextResponse.json({ message: "Invalid token" }, { status: 401 });
-        }
-      }
-    } else {
-      // No API key configured, require JWT auth
-      const cookieStore = await cookies();
-      const token = cookieStore.get("eloc8-token")?.value;
-
-      if (!token) {
-        return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-      }
-
-      try {
-        await jwtVerify(token, JWT_SECRET);
-      } catch {
-        return NextResponse.json({ message: "Invalid token" }, { status: 401 });
-      }
+    if (!isCronAuth && !session) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
     // Parse request body for optional staleDays parameter
@@ -78,32 +49,18 @@ export async function POST(request: Request) {
       });
     }
 
-    // Get ThingsBoard tokens from the most recent user session
-    // For cron jobs, we need a service account approach
-    // For now, use the first admin user's cached session if available
-    const cookieStore = await cookies();
-    const token = cookieStore.get("eloc8-token")?.value;
-
-    let tbClient;
-    if (token) {
-      try {
-        const { payload } = await jwtVerify(token, JWT_SECRET);
-        tbClient = createThingsboardClient({
-          accessToken: payload.tbToken as string,
-          refreshToken: payload.tbRefreshToken as string,
-        });
-      } catch {
-        return NextResponse.json(
-          { message: "Valid session required to create snapshot" },
-          { status: 401 }
-        );
-      }
-    } else {
+    // Session is required to create snapshot (need ThingsBoard tokens)
+    if (!session) {
       return NextResponse.json(
         { message: "Valid session required to create snapshot" },
         { status: 401 }
       );
     }
+
+    const tbClient = createThingsboardClient({
+      accessToken: session.tbToken,
+      refreshToken: session.tbRefreshToken,
+    });
 
     // Fetch all devices from ThingsBoard with their lastActivityTime attribute
     const allDevices: Array<{

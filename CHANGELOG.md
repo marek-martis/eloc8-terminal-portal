@@ -51,6 +51,11 @@ All notable changes to this project will be documented in this file.
 - Updated sidebar navigation with "Stale Tracking" link
 - Added stale threshold options to constants (1 day to 1 month)
 
+### Security
+- **Removed fallback JWT secret** - app now fails to start if `JWT_SECRET` is not configured
+- Added centralized auth utility (`src/lib/auth.ts`) with `getSession()` and `createToken()` helpers
+- Refactored all API routes to use shared auth utility
+
 ### Fixed
 - Database connection from host machine for Prisma migrations
 - WebSocket provider self-referencing callback lint error
@@ -61,3 +66,4 @@ All notable changes to this project will be documented in this file.
 - Device profile filter now works correctly - snapshots now store `deviceProfileId` from ThingsBoard
 - Profiles API (`/api/stale-devices/profiles`) now fetches profiles directly from ThingsBoard instead of empty local cache
 - Added `getDeviceProfiles()` method to ThingsBoard client for fetching tenant device profiles
+- Added input validation for `staleDays` parameter in stats API (must be 1-365)

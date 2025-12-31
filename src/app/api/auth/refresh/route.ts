@@ -1,43 +1,33 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { jwtVerify, SignJWT } from "jose";
 import { createThingsboardClient } from "@/lib/thingsboard";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "fallback-secret-change-in-production"
-);
+import { getSession, createToken } from "@/lib/auth";
 
 export async function POST() {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("eloc8-token")?.value;
+    const session = await getSession();
 
-    if (!token) {
+    if (!session) {
       return NextResponse.json({ message: "No token found" }, { status: 401 });
     }
 
-    const { payload } = await jwtVerify(token, JWT_SECRET);
-
     const tbClient = createThingsboardClient({
-      accessToken: payload.tbToken as string,
-      refreshToken: payload.tbRefreshToken as string,
+      accessToken: session.tbToken,
+      refreshToken: session.tbRefreshToken,
     });
 
     const newTbToken = await tbClient.refreshAccessToken();
     const tokens = tbClient.getTokens();
 
-    const newAppToken = await new SignJWT({
-      userId: payload.userId,
-      email: payload.email,
-      role: payload.role,
+    const newAppToken = await createToken({
+      userId: session.userId,
+      email: session.email,
+      role: session.role,
       tbToken: newTbToken,
-      tbRefreshToken: tokens.refreshToken,
-    })
-      .setProtectedHeader({ alg: "HS256" })
-      .setIssuedAt()
-      .setExpirationTime("2h")
-      .sign(JWT_SECRET);
+      tbRefreshToken: tokens.refreshToken || session.tbRefreshToken,
+    });
 
+    const cookieStore = await cookies();
     cookieStore.set("eloc8-token", newAppToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

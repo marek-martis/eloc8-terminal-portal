@@ -1,12 +1,8 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { SignJWT } from "jose";
 import { prisma } from "@/lib/prisma";
 import { createThingsboardClient } from "@/lib/thingsboard";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "fallback-secret-change-in-production"
-);
+import { createToken } from "@/lib/auth";
 
 function mapThingsboardRole(
   authority: string
@@ -56,17 +52,13 @@ export async function POST(request: Request) {
       },
     });
 
-    const appToken = await new SignJWT({
+    const appToken = await createToken({
       userId: user.id,
       email: user.email,
       role: user.role,
       tbToken: authResponse.token,
       tbRefreshToken: authResponse.refreshToken,
-    })
-      .setProtectedHeader({ alg: "HS256" })
-      .setIssuedAt()
-      .setExpirationTime("2h")
-      .sign(JWT_SECRET);
+    });
 
     const cookieStore = await cookies();
     cookieStore.set("eloc8-token", appToken, {

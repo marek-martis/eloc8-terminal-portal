@@ -1,31 +1,13 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { jwtVerify } from "jose";
 import { createThingsboardClient } from "@/lib/thingsboard";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "fallback-secret-change-in-production"
-);
+import { getSession } from "@/lib/auth";
 
 export async function GET(request: Request) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("eloc8-token")?.value;
+    const session = await getSession();
 
-    if (!token) {
+    if (!session) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
-
-    let payload;
-    try {
-      const verified = await jwtVerify(token, JWT_SECRET);
-      payload = verified.payload;
-    } catch (jwtError) {
-      console.error("JWT verification failed:", jwtError);
-      return NextResponse.json(
-        { message: "Invalid token", error: "JWT verification failed" },
-        { status: 401 }
-      );
     }
 
     const { searchParams } = new URL(request.url);
@@ -36,8 +18,8 @@ export async function GET(request: Request) {
     const fetchAll = searchParams.get("fetchAll") === "true";
 
     const tbClient = createThingsboardClient({
-      accessToken: payload.tbToken as string,
-      refreshToken: payload.tbRefreshToken as string,
+      accessToken: session.tbToken,
+      refreshToken: session.tbRefreshToken,
     });
 
     let allDevices: Array<{ id: { id: string }; name: string; type: string; label?: string }> = [];

@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { jwtVerify } from "jose";
 import { createThingsboardClient } from "@/lib/thingsboard";
 import { TB_PAGE_SIZE, MAX_CONCURRENT_TELEMETRY_REQUESTS } from "@/lib/constants";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "fallback-secret-change-in-production"
-);
+import { getSession } from "@/lib/auth";
 
 interface FleetMetrics {
   totalDevices: number;
@@ -25,31 +20,18 @@ interface FleetMetrics {
 
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("eloc8-token")?.value;
+    const session = await getSession();
 
-    if (!token) {
+    if (!session) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
-
-    let payload;
-    try {
-      const verified = await jwtVerify(token, JWT_SECRET);
-      payload = verified.payload;
-    } catch (jwtError) {
-      console.error("JWT verification failed:", jwtError);
-      return NextResponse.json(
-        { message: "Invalid token" },
-        { status: 401 }
-      );
     }
 
     const searchParams = request.nextUrl.searchParams;
     const keys = searchParams.get("keys")?.split(",") || ["speed", "battery"];
 
     const tbClient = createThingsboardClient({
-      accessToken: payload.tbToken as string,
-      refreshToken: payload.tbRefreshToken as string,
+      accessToken: session.tbToken,
+      refreshToken: session.tbRefreshToken,
     });
 
     // Get all devices
