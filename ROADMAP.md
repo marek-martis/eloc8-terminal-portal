@@ -27,7 +27,7 @@
 - [ ] Data quality checks (valid lat/lon, telemetry sequence validation)
 
 ## Technical Debt
-- [ ] Migrate middleware.ts to proxy.ts (Next.js 16)
+- [x] Migrate middleware.ts to proxy.ts (Next.js 16)
 - [ ] Fix WebSocket connection issues
 - [ ] Add Settings page preferences persistence
 

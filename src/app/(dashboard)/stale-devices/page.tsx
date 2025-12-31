@@ -32,6 +32,9 @@ import {
   Loader2,
   Filter,
   X,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { STALE_THRESHOLD_OPTIONS } from "@/lib/constants";
 
@@ -81,6 +84,48 @@ function MetricCard({
   );
 }
 
+type SortField = "deviceName" | "deviceType" | "lastActivityAt" | "daysSinceActivity" | "consecutiveStaleDays";
+type SortDirection = "asc" | "desc";
+
+function SortableHeader({
+  label,
+  field,
+  currentField,
+  direction,
+  onSort,
+  align = "left",
+}: {
+  label: string;
+  field: SortField;
+  currentField: SortField | null;
+  direction: SortDirection;
+  onSort: (field: SortField) => void;
+  align?: "left" | "right";
+}) {
+  const isActive = currentField === field;
+  return (
+    <th
+      className={`py-3 px-2 font-medium cursor-pointer hover:bg-slate-100 select-none ${
+        align === "right" ? "text-right" : "text-left"
+      }`}
+      onClick={() => onSort(field)}
+    >
+      <div className={`flex items-center gap-1 ${align === "right" ? "justify-end" : ""}`}>
+        <span>{label}</span>
+        {isActive ? (
+          direction === "asc" ? (
+            <ArrowUp className="h-4 w-4" />
+          ) : (
+            <ArrowDown className="h-4 w-4" />
+          )
+        ) : (
+          <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
+        )}
+      </div>
+    </th>
+  );
+}
+
 function DeviceTable({
   devices,
   showDaysWasStale = false,
@@ -90,6 +135,60 @@ function DeviceTable({
   showDaysWasStale?: boolean;
   emptyMessage?: string;
 }) {
+  const [sortField, setSortField] = useState<SortField | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
+
+  const sortedDevices = useMemo(() => {
+    if (!sortField) return devices;
+
+    return [...devices].sort((a, b) => {
+      let aVal: string | number | null;
+      let bVal: string | number | null;
+
+      switch (sortField) {
+        case "deviceName":
+          aVal = a.deviceName.toLowerCase();
+          bVal = b.deviceName.toLowerCase();
+          break;
+        case "deviceType":
+          aVal = a.deviceType.toLowerCase();
+          bVal = b.deviceType.toLowerCase();
+          break;
+        case "lastActivityAt":
+          aVal = a.lastActivityAt ? new Date(a.lastActivityAt).getTime() : 0;
+          bVal = b.lastActivityAt ? new Date(b.lastActivityAt).getTime() : 0;
+          break;
+        case "daysSinceActivity":
+          aVal = a.daysSinceActivity;
+          bVal = b.daysSinceActivity;
+          break;
+        case "consecutiveStaleDays":
+          aVal = showDaysWasStale && "daysWasStale" in a
+            ? (a as StaleDeviceRemoval).daysWasStale
+            : a.consecutiveStaleDays;
+          bVal = showDaysWasStale && "daysWasStale" in b
+            ? (b as StaleDeviceRemoval).daysWasStale
+            : b.consecutiveStaleDays;
+          break;
+        default:
+          return 0;
+      }
+
+      if (aVal < bVal) return sortDirection === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortDirection === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [devices, sortField, sortDirection, showDaysWasStale]);
+
   if (devices.length === 0) {
     return (
       <div className="flex items-center justify-center h-[200px] text-muted-foreground">
@@ -103,17 +202,48 @@ function DeviceTable({
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b">
-            <th className="text-left py-3 px-2 font-medium">Device</th>
-            <th className="text-left py-3 px-2 font-medium">Type</th>
-            <th className="text-right py-3 px-2 font-medium">Last Activity</th>
-            <th className="text-right py-3 px-2 font-medium">Days Inactive</th>
-            <th className="text-right py-3 px-2 font-medium">
-              {showDaysWasStale ? "Days Was Stale" : "Days on List"}
-            </th>
+            <SortableHeader
+              label="Device"
+              field="deviceName"
+              currentField={sortField}
+              direction={sortDirection}
+              onSort={handleSort}
+            />
+            <SortableHeader
+              label="Type"
+              field="deviceType"
+              currentField={sortField}
+              direction={sortDirection}
+              onSort={handleSort}
+            />
+            <SortableHeader
+              label="Last Activity"
+              field="lastActivityAt"
+              currentField={sortField}
+              direction={sortDirection}
+              onSort={handleSort}
+              align="right"
+            />
+            <SortableHeader
+              label="Days Inactive"
+              field="daysSinceActivity"
+              currentField={sortField}
+              direction={sortDirection}
+              onSort={handleSort}
+              align="right"
+            />
+            <SortableHeader
+              label={showDaysWasStale ? "Days Was Stale" : "Days on List"}
+              field="consecutiveStaleDays"
+              currentField={sortField}
+              direction={sortDirection}
+              onSort={handleSort}
+              align="right"
+            />
           </tr>
         </thead>
         <tbody>
-          {devices.map((device) => (
+          {sortedDevices.map((device) => (
             <tr
               key={device.deviceId}
               className="border-b last:border-0 hover:bg-slate-50"

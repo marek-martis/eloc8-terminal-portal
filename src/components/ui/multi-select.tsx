@@ -69,13 +69,18 @@ const MultiSelect = React.forwardRef<HTMLButtonElement, MultiSelectProps>(
     },
     ref
   ) => {
-    const [selectedValues, setSelectedValues] =
-      React.useState<string[]>(defaultValue);
     const [isPopoverOpen, setIsPopoverOpen] = React.useState(false);
+    const [searchQuery, setSearchQuery] = React.useState("");
 
-    React.useEffect(() => {
-      setSelectedValues(defaultValue);
-    }, [defaultValue]);
+    // Use defaultValue directly as the source of truth (controlled component)
+    const selectedValues = defaultValue;
+
+    const filteredOptions = React.useMemo(() => {
+      if (!searchQuery) return options;
+      return options.filter((option) =>
+        option.label.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }, [options, searchQuery]);
 
     const handleInputKeyDown = (
       event: React.KeyboardEvent<HTMLInputElement>
@@ -85,7 +90,6 @@ const MultiSelect = React.forwardRef<HTMLButtonElement, MultiSelectProps>(
       } else if (event.key === "Backspace" && !event.currentTarget.value) {
         const newSelectedValues = [...selectedValues];
         newSelectedValues.pop();
-        setSelectedValues(newSelectedValues);
         onValueChange(newSelectedValues);
       }
     };
@@ -94,8 +98,20 @@ const MultiSelect = React.forwardRef<HTMLButtonElement, MultiSelectProps>(
       const newSelectedValues = selectedValues.includes(value)
         ? selectedValues.filter((v) => v !== value)
         : [...selectedValues, value];
-      setSelectedValues(newSelectedValues);
       onValueChange(newSelectedValues);
+    };
+
+    const removeOption = (event: React.MouseEvent, value: string) => {
+      event.stopPropagation();
+      event.preventDefault();
+      const newSelectedValues = selectedValues.filter((v) => v !== value);
+      onValueChange(newSelectedValues);
+    };
+
+    const clearAll = (event: React.MouseEvent) => {
+      event.stopPropagation();
+      event.preventDefault();
+      onValueChange([]);
     };
 
     return (
@@ -121,10 +137,7 @@ const MultiSelect = React.forwardRef<HTMLButtonElement, MultiSelectProps>(
                         {option?.label}
                         <X
                           className="ml-2 h-4 w-4 cursor-pointer"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            toggleOption(value);
-                          }}
+                          onClick={(event) => removeOption(event, value)}
                         />
                       </Badge>
                     );
@@ -143,11 +156,7 @@ const MultiSelect = React.forwardRef<HTMLButtonElement, MultiSelectProps>(
                 <div className="flex items-center justify-between">
                   <X
                     className="h-4 mx-2 cursor-pointer"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setSelectedValues([]);
-                      onValueChange([]);
-                    }}
+                    onClick={clearAll}
                   />
                   <ChevronsUpDown className="h-4" />
                 </div>
@@ -163,18 +172,23 @@ const MultiSelect = React.forwardRef<HTMLButtonElement, MultiSelectProps>(
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[200px] p-0" align="start">
-          <Command>
+          <Command shouldFilter={false}>
             <CommandInput
               placeholder="Search..."
+              value={searchQuery}
+              onValueChange={setSearchQuery}
               onKeyDown={handleInputKeyDown}
             />
             <CommandList>
-              <CommandEmpty>No results found.</CommandEmpty>
+              {filteredOptions.length === 0 && (
+                <CommandEmpty>No results found.</CommandEmpty>
+              )}
               <CommandGroup>
-                {options.map((option) => (
-                  <CommandItem
+                {filteredOptions.map((option) => (
+                  <div
                     key={option.value}
-                    onSelect={() => toggleOption(option.value)}
+                    onClick={() => toggleOption(option.value)}
+                    className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground"
                   >
                     <Check
                       className={cn(
@@ -186,7 +200,7 @@ const MultiSelect = React.forwardRef<HTMLButtonElement, MultiSelectProps>(
                     />
                     {option.icon}
                     <span>{option.label}</span>
-                  </CommandItem>
+                  </div>
                 ))}
               </CommandGroup>
             </CommandList>

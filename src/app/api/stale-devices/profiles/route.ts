@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
-import { createThingsboardClient } from "@/lib/thingsboard/client";
+import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 
+/**
+ * GET /api/stale-devices/profiles
+ * Returns device profiles from the local database (synced from ThingsBoard during snapshot creation).
+ * These IDs match what's stored in StaleDeviceRecord.deviceProfileId for filtering.
+ */
 export async function GET() {
   try {
     const session = await getSession();
@@ -10,20 +15,14 @@ export async function GET() {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const tbClient = createThingsboardClient({
-      accessToken: session.tbToken,
-      refreshToken: session.tbRefreshToken,
+    // Fetch profiles from local database - these IDs match what's stored in snapshots
+    const profiles = await prisma.deviceProfile.findMany({
+      select: {
+        id: true,
+        name: true,
+      },
+      orderBy: { name: "asc" },
     });
-
-    const profilesData = await tbClient.getDeviceProfiles({ pageSize: 100 });
-
-    const profiles = profilesData.data.map((profile) => ({
-      id: profile.id.id,
-      name: profile.name,
-    }));
-
-    // Sort by name
-    profiles.sort((a, b) => a.name.localeCompare(b.name));
 
     return NextResponse.json(profiles);
   } catch (error) {

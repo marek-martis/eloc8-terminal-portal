@@ -27,6 +27,7 @@ All notable changes to this project will be documented in this file.
 - Filter stale devices by one or more device profiles
 - New Prisma models: `StaleDeviceSnapshot`, `StaleDeviceRecord`
 - New hooks: `useStaleDeviceSnapshots`, `useAvailableSnapshotDates`, `useTriggerSnapshot`
+- Sortable table headers in stale devices page (click to sort by Device, Type, Last Activity, Days Inactive, Days on List)
 
 #### Phase 5: Dashboard
 - Dashboard landing page with fleet overview (total, active, inactive device counts)
@@ -37,8 +38,10 @@ All notable changes to this project will be documented in this file.
 - PostgreSQL port (5432) exposed in docker-compose.yml for local development
 - CLAUDE.md documentation for AI-assisted development
 - ThingsBoard `entitiesQuery/count` API methods for efficient device counting
+- ThingsBoard `entitiesQuery/find` API methods (`findStaleDevices`, `findAllDevicesWithActivity`) for efficient server-side filtering
 
 ### Changed
+- **Migrated `middleware.ts` to `proxy.ts`** for Next.js 16 compatibility (renamed function from `middleware` to `proxy`)
 - Updated docker-compose.yml to expose postgres port to host
 - **Active/inactive status now uses ThingsBoard server attribute (`active: true/false`) instead of telemetry timestamps**
 - Renamed `isOnline` to `isActive` in Device interface for consistency with ThingsBoard
@@ -50,6 +53,7 @@ All notable changes to this project will be documented in this file.
 - Analytics page uses `useAllDevices` hook to show complete device list
 - Updated sidebar navigation with "Stale Tracking" link
 - Added stale threshold options to constants (1 day to 1 month)
+- **Stale device snapshot creation now uses `entitiesQuery/find` API** - reduces API calls from N+1 (1000+ for large fleets) to 2-3 calls
 
 ### Security
 - **Removed fallback JWT secret** - app now fails to start if `JWT_SECRET` is not configured
@@ -62,8 +66,9 @@ All notable changes to this project will be documented in this file.
 - Improved API error handling with specific error messages for JWT failures (401) and ThingsBoard API errors (502)
 - ThingsBoard client now correctly detects token expiry by decoding JWT instead of assuming fixed expiry
 - Map zoom issues caused by repeated fitBounds calls on device updates
-- Device profile dropdown in stale devices page now clickable (fixed cursor and hover styles in CommandItem)
-- Device profile filter now works correctly - snapshots now store `deviceProfileId` from ThingsBoard
-- Profiles API (`/api/stale-devices/profiles`) now fetches profiles directly from ThingsBoard instead of empty local cache
+- MultiSelect component now fully controlled with proper X button handling (fixes cmdk v1.x compatibility issue)
+- Profile filter in stale devices page now uses local database IDs that match stored snapshot data
+- Profiles API (`/api/stale-devices/profiles`) now fetches from local database instead of ThingsBoard (IDs match snapshots)
 - Added `getDeviceProfiles()` method to ThingsBoard client for fetching tenant device profiles
 - Added input validation for `staleDays` parameter in stats API (must be 1-365)
+- Fixed foreign key constraint error in stale device snapshot creation - now syncs device profiles from ThingsBoard before creating records

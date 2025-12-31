@@ -277,6 +277,176 @@ export class ThingsboardClient {
     return this.authenticatedRequest(`/api/deviceProfiles?${query}`);
   }
 
+  /**
+   * Find stale devices using the entitiesQuery/find API.
+   * Much more efficient than fetching all devices and their attributes separately.
+   * Returns devices with lastActivityTime < cutoffTime, along with their attributes.
+   */
+  async findStaleDevices(params: {
+    staleDays: number;
+    pageSize?: number;
+    page?: number;
+  }): Promise<{
+    data: Array<{
+      entityId: { id: string; entityType: string };
+      name: string;
+      type: string;
+      deviceProfileId?: string;
+      lastActivityTime?: number;
+    }>;
+    totalElements: number;
+    totalPages: number;
+    hasNext: boolean;
+  }> {
+    const cutoffTime = Date.now() - params.staleDays * 24 * 60 * 60 * 1000;
+    const pageSize = params.pageSize || 1000;
+    const page = params.page || 0;
+
+    const response = await this.authenticatedRequest<{
+      data: Array<{
+        entityId: { id: string; entityType: string };
+        latest: {
+          ENTITY_FIELD?: Record<string, { ts: number; value: string }>;
+          SERVER_ATTRIBUTE?: Record<string, { ts: number; value: number }>;
+        };
+      }>;
+      totalElements: number;
+      totalPages: number;
+      hasNext: boolean;
+    }>("/api/entitiesQuery/find", {
+      method: "POST",
+      body: JSON.stringify({
+        entityFilter: {
+          type: "entityType",
+          resolveMultiple: true,
+          entityType: "DEVICE",
+        },
+        keyFilters: [
+          {
+            key: {
+              type: "SERVER_ATTRIBUTE",
+              key: "lastActivityTime",
+            },
+            valueType: "NUMERIC",
+            predicate: {
+              operation: "LESS",
+              value: {
+                defaultValue: cutoffTime,
+                dynamicValue: null,
+              },
+              type: "NUMERIC",
+            },
+          },
+        ],
+        entityFields: [
+          { type: "ENTITY_FIELD", key: "name" },
+          { type: "ENTITY_FIELD", key: "type" },
+          { type: "ENTITY_FIELD", key: "deviceProfileId" },
+        ],
+        latestValues: [
+          { type: "SERVER_ATTRIBUTE", key: "lastActivityTime" },
+        ],
+        pageLink: {
+          page,
+          pageSize,
+          sortOrder: {
+            key: { key: "name", type: "ENTITY_FIELD" },
+            direction: "ASC",
+          },
+        },
+      }),
+    });
+
+    // Transform response to simpler format
+    return {
+      data: response.data.map((item) => ({
+        entityId: item.entityId,
+        name: item.latest.ENTITY_FIELD?.name?.value || "",
+        type: item.latest.ENTITY_FIELD?.type?.value || "",
+        deviceProfileId: item.latest.ENTITY_FIELD?.deviceProfileId?.value,
+        lastActivityTime: item.latest.SERVER_ATTRIBUTE?.lastActivityTime?.value,
+      })),
+      totalElements: response.totalElements,
+      totalPages: response.totalPages,
+      hasNext: response.hasNext,
+    };
+  }
+
+  /**
+   * Find all devices (including active ones) using the entitiesQuery/find API.
+   * Returns devices with their lastActivityTime attribute.
+   */
+  async findAllDevicesWithActivity(params: {
+    pageSize?: number;
+    page?: number;
+  }): Promise<{
+    data: Array<{
+      entityId: { id: string; entityType: string };
+      name: string;
+      type: string;
+      deviceProfileId?: string;
+      lastActivityTime?: number;
+    }>;
+    totalElements: number;
+    totalPages: number;
+    hasNext: boolean;
+  }> {
+    const pageSize = params.pageSize || 1000;
+    const page = params.page || 0;
+
+    const response = await this.authenticatedRequest<{
+      data: Array<{
+        entityId: { id: string; entityType: string };
+        latest: {
+          ENTITY_FIELD?: Record<string, { ts: number; value: string }>;
+          SERVER_ATTRIBUTE?: Record<string, { ts: number; value: number }>;
+        };
+      }>;
+      totalElements: number;
+      totalPages: number;
+      hasNext: boolean;
+    }>("/api/entitiesQuery/find", {
+      method: "POST",
+      body: JSON.stringify({
+        entityFilter: {
+          type: "entityType",
+          resolveMultiple: true,
+          entityType: "DEVICE",
+        },
+        entityFields: [
+          { type: "ENTITY_FIELD", key: "name" },
+          { type: "ENTITY_FIELD", key: "type" },
+          { type: "ENTITY_FIELD", key: "deviceProfileId" },
+        ],
+        latestValues: [
+          { type: "SERVER_ATTRIBUTE", key: "lastActivityTime" },
+        ],
+        pageLink: {
+          page,
+          pageSize,
+          sortOrder: {
+            key: { key: "name", type: "ENTITY_FIELD" },
+            direction: "ASC",
+          },
+        },
+      }),
+    });
+
+    // Transform response to simpler format
+    return {
+      data: response.data.map((item) => ({
+        entityId: item.entityId,
+        name: item.latest.ENTITY_FIELD?.name?.value || "",
+        type: item.latest.ENTITY_FIELD?.type?.value || "",
+        deviceProfileId: item.latest.ENTITY_FIELD?.deviceProfileId?.value,
+        lastActivityTime: item.latest.SERVER_ATTRIBUTE?.lastActivityTime?.value,
+      })),
+      totalElements: response.totalElements,
+      totalPages: response.totalPages,
+      hasNext: response.hasNext,
+    };
+  }
+
   getWebSocketUrl(): string {
     const wsProtocol = TB_BASE_URL?.startsWith("https") ? "wss" : "ws";
     const baseUrl = TB_BASE_URL?.replace(/^https?/, wsProtocol);

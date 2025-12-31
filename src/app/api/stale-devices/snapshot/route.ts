@@ -62,8 +62,9 @@ export async function POST(request: Request) {
       refreshToken: session.tbRefreshToken,
     });
 
-    // Fetch all devices from ThingsBoard with their lastActivityTime attribute
-    const allDevices: Array<{
+    // Use optimized entitiesQuery/find API to fetch stale devices directly
+    // This is much more efficient than fetching all devices + N attribute calls
+    const staleDevices: Array<{
       id: string;
       name: string;
       type: string;
@@ -73,55 +74,59 @@ export async function POST(request: Request) {
 
     let page = 0;
     let hasMore = true;
-    const batchSize = 100;
 
     while (hasMore) {
-      const response = await tbClient.getDevices({
+      const response = await tbClient.findStaleDevices({
+        staleDays,
         page,
-        pageSize: batchSize,
+        pageSize: 1000,
       });
 
-      // Fetch attributes for all devices in this batch in parallel
-      const devicePromises = response.data.map(async (device) => {
-        try {
-          const attributes = await tbClient.getDeviceAttributes(device.id.id, "SERVER_SCOPE");
-          const lastActivityAttr = (attributes as Array<{ key: string; value: unknown }>)?.find(
-            (attr) => attr.key === "lastActivityTime"
-          );
-          const lastActivityTs = lastActivityAttr?.value as number | undefined;
-
-          return {
-            id: device.id.id,
-            name: device.name,
-            type: device.type,
-            deviceProfileId: device.deviceProfileId?.id,
-            lastActivityAt: lastActivityTs ? new Date(lastActivityTs).toISOString() : undefined,
-          };
-        } catch {
-          return {
-            id: device.id.id,
-            name: device.name,
-            type: device.type,
-            deviceProfileId: device.deviceProfileId?.id,
-          };
-        }
-      });
-
-      const batchDevices = await Promise.all(devicePromises);
-      allDevices.push(...batchDevices);
+      for (const device of response.data) {
+        staleDevices.push({
+          id: device.entityId.id,
+          name: device.name,
+          type: device.type,
+          deviceProfileId: device.deviceProfileId,
+          lastActivityAt: device.lastActivityTime
+            ? new Date(device.lastActivityTime).toISOString()
+            : undefined,
+        });
+      }
 
       hasMore = response.hasNext;
       page++;
     }
 
-    // Calculate stale threshold date
-    const staleThreshold = subDays(today, staleDays);
+    // Get total device count for the snapshot (using efficient count API)
+    const totalDevices = await tbClient.countDevices();
 
-    // Filter stale devices
-    const staleDevices = allDevices.filter((device) => {
-      if (!device.lastActivityAt) return true; // No activity = stale
-      return new Date(device.lastActivityAt) < staleThreshold;
-    });
+    // Sync device profiles from ThingsBoard to local database
+    const profileMap = new Map<string, string>(); // ThingsBoard ID -> local ID
+    let profilePage = 0;
+    let hasMoreProfiles = true;
+
+    while (hasMoreProfiles) {
+      const profilesResponse = await tbClient.getDeviceProfiles({
+        page: profilePage,
+        pageSize: 100,
+      });
+
+      for (const profile of profilesResponse.data) {
+        const upsertedProfile = await prisma.deviceProfile.upsert({
+          where: { thingsboardId: profile.id.id },
+          update: { name: profile.name },
+          create: {
+            thingsboardId: profile.id.id,
+            name: profile.name,
+          },
+        });
+        profileMap.set(profile.id.id, upsertedProfile.id);
+      }
+
+      hasMoreProfiles = profilesResponse.hasNext;
+      profilePage++;
+    }
 
     // Get previous day's snapshot to track consecutive stale days
     const yesterday = subDays(today, 1);
@@ -139,7 +144,7 @@ export async function POST(request: Request) {
       data: {
         snapshotDate: today,
         staleDays,
-        totalDevices: allDevices.length,
+        totalDevices,
         staleCount: staleDevices.length,
         devices: {
           create: staleDevices.map((device) => {
@@ -156,11 +161,16 @@ export async function POST(request: Request) {
                 )
               : 999; // Large number for devices with no telemetry
 
+            // Look up local profile ID from the synced profiles
+            const localProfileId = device.deviceProfileId
+              ? profileMap.get(device.deviceProfileId) || null
+              : null;
+
             return {
               thingsboardDeviceId: device.id,
               deviceName: device.name,
               deviceType: device.type,
-              deviceProfileId: device.deviceProfileId || null,
+              deviceProfileId: localProfileId,
               lastActivityAt,
               daysSinceActivity,
               // If device was stale yesterday, continue tracking
