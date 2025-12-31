@@ -41,6 +41,7 @@ All notable changes to this project will be documented in this file.
 - ThingsBoard `entitiesQuery/find` API methods (`findStaleDevices`, `findAllDevicesWithActivity`) for efficient server-side filtering
 - Device type summary API endpoint (`/api/devices/type-summary`) for analytics charts
 - Devices API now supports status filtering (`status=active|inactive`) using `lastActivityTime`
+- Stale devices table export for CSV and XLSX
 
 ### Changed
 - **Migrated `middleware.ts` to `proxy.ts`** for Next.js 16 compatibility (renamed function from `middleware` to `proxy`)
@@ -54,6 +55,8 @@ All notable changes to this project will be documented in this file.
 - Devices API now supports `fetchAll=true`, plus `sortBy`/`sortDir` for server-side sorting
 - Analytics page uses paged device search for selectors instead of loading all devices
 - Live Tracking Map now requests active devices only and uses stats API for totals
+- Stale device total now reflects selected profiles when profile filter is active
+- Replaced XLSX export library to resolve security audit issue
 - Updated sidebar navigation with "Stale Tracking" link
 - Added stale threshold options to constants (1 day to 1 month)
 - **Stale device snapshot creation now uses `entitiesQuery/find` API** - reduces API calls from N+1 (1000+ for large fleets) to 2-3 calls
@@ -70,6 +73,7 @@ All notable changes to this project will be documented in this file.
 - ThingsBoard client now correctly detects token expiry by decoding JWT instead of assuming fixed expiry
 - Map zoom issues caused by repeated fitBounds calls on device updates
 - MultiSelect component now fully controlled with proper X button handling (fixes cmdk v1.x compatibility issue)
+- MultiSelect clear/remove controls no longer cause nested button hydration errors
 - Profile filter in stale devices page now uses local database IDs that match stored snapshot data
 - Profiles API (`/api/stale-devices/profiles`) now fetches from local database instead of ThingsBoard (IDs match snapshots)
 - Added `getDeviceProfiles()` method to ThingsBoard client for fetching tenant device profiles

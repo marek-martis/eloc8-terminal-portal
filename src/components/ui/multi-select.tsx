@@ -96,22 +96,29 @@ const MultiSelect = React.forwardRef<HTMLButtonElement, MultiSelectProps>(
       onValueChange(newSelectedValues);
     };
 
-    const removeOption = (event: React.MouseEvent, value: string) => {
-      event.stopPropagation();
-      event.preventDefault();
+    const removeOption = (value: string) => {
       const newSelectedValues = selectedValues.filter((v) => v !== value);
       onValueChange(newSelectedValues);
     };
 
-    const clearAll = (event: React.MouseEvent) => {
-      event.stopPropagation();
-      event.preventDefault();
+    const clearAll = () => {
       onValueChange([]);
     };
 
     const handleMouseDown = (event: React.MouseEvent) => {
       event.stopPropagation();
       event.preventDefault();
+    };
+
+    const handleKeyDown = (
+      event: React.KeyboardEvent,
+      onActivate: () => void
+    ) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.stopPropagation();
+        event.preventDefault();
+        onActivate();
+      }
     };
 
     return (
@@ -135,14 +142,22 @@ const MultiSelect = React.forwardRef<HTMLButtonElement, MultiSelectProps>(
                         className={cn(multiSelectVariants({ variant }))}
                       >
                         {option?.label}
-                        <button
-                          type="button"
+                        <span
+                          role="button"
+                          tabIndex={0}
                           className="ml-1 inline-flex items-center"
                           onMouseDown={handleMouseDown}
-                          onClick={(event) => removeOption(event, value)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            event.preventDefault();
+                            removeOption(value);
+                          }}
+                          onKeyDown={(event) =>
+                            handleKeyDown(event, () => removeOption(value))
+                          }
                         >
                           <X className="h-4 w-4 cursor-pointer" />
-                        </button>
+                        </span>
                       </Badge>
                     );
                   })}
@@ -158,14 +173,20 @@ const MultiSelect = React.forwardRef<HTMLButtonElement, MultiSelectProps>(
                   )}
                 </div>
                 <div className="flex items-center justify-between">
-                  <button
-                    type="button"
+                  <span
+                    role="button"
+                    tabIndex={0}
                     className="mx-2 inline-flex items-center"
                     onMouseDown={handleMouseDown}
-                    onClick={clearAll}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      event.preventDefault();
+                      clearAll();
+                    }}
+                    onKeyDown={(event) => handleKeyDown(event, clearAll)}
                   >
                     <X className="h-4 cursor-pointer" />
-                  </button>
+                  </span>
                   <ChevronsUpDown className="h-4" />
                 </div>
               </div>
