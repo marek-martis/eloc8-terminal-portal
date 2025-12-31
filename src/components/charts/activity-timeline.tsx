@@ -98,7 +98,7 @@ export function ActivityTimeline({ events, isLoading }: ActivityTimelineProps) {
       <div className="absolute left-[7px] top-2 bottom-2 w-0.5 bg-border" />
 
       <div className="space-y-4">
-        {events.map((event, index) => (
+        {events.map((event) => (
           <div key={event.id} className="relative flex gap-4 pl-6">
             {/* Timeline dot */}
             <div

@@ -36,7 +36,6 @@ import {
   Activity,
   Gauge,
   Battery,
-  TrendingUp,
 } from "lucide-react";
 import { DEFAULT_TELEMETRY_KEYS } from "@/lib/constants";
 

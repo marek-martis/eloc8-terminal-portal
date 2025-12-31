@@ -79,7 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
     } finally {
@@ -87,7 +87,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAccessToken(null);
       router.push("/login");
     }
-  };
+  }, [router]);
 
   const refreshToken = useCallback(async (): Promise<string | null> => {
     try {
@@ -102,7 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       logout();
     }
     return null;
-  }, []);
+  }, [logout]);
 
   useEffect(() => {
     if (!accessToken) return;

@@ -22,13 +22,14 @@ const Command = React.forwardRef<
 
 Command.displayName = CommandPrimitive.displayName;
 
-const CommandDialog = ({ children, ...props }: any) => {
-  return (
-    <CommandDialog {...props}>
-      <Command>{children}</Command>
-    </CommandDialog>
-  );
-};
+const CommandDialog = ({
+  children,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof CommandPrimitive.Dialog>) => (
+  <CommandPrimitive.Dialog {...props}>
+    <Command>{children}</Command>
+  </CommandPrimitive.Dialog>
+);
 
 const CommandInput = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.Input>,

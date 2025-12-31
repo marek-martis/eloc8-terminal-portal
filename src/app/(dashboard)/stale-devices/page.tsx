@@ -30,8 +30,6 @@ import {
   TrendingDown,
   RefreshCw,
   Loader2,
-  Filter,
-  X,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
@@ -291,8 +289,7 @@ export default function StaleDevicesPage() {
   const [threshold, setThreshold] = useState<number>(2);
   const [selectedProfiles, setSelectedProfiles] = useState<string[]>([]);
 
-  const { data: datesData, isLoading: isLoadingDates } =
-    useAvailableSnapshotDates();
+  const { data: datesData } = useAvailableSnapshotDates();
   const { data: profilesData, isLoading: isLoadingProfiles } =
     useDeviceProfiles();
   const { data: snapshotData, isLoading: isLoadingSnapshots } =
@@ -322,8 +319,16 @@ export default function StaleDevicesPage() {
 
   // Calculate metrics
   const staleCount = snapshotData?.currentSnapshot?.staleCount ?? 0;
+  const filteredStaleCount = snapshotData?.currentSnapshot?.devices.length ?? 0;
   const compareStaleCount = snapshotData?.comparisonSnapshot?.staleCount ?? 0;
-  const staleDiff = staleCount - compareStaleCount;
+  const compareFilteredStaleCount =
+    snapshotData?.comparisonSnapshot?.devices.length ?? 0;
+  const useFilteredTotal = selectedProfiles.length > 0;
+  const totalStaleCount = useFilteredTotal ? filteredStaleCount : staleCount;
+  const totalCompareStaleCount = useFilteredTotal
+    ? compareFilteredStaleCount
+    : compareStaleCount;
+  const staleDiff = totalStaleCount - totalCompareStaleCount;
 
   const newAdditionsCount = snapshotData?.analysis.newAdditions.length ?? 0;
   const removalsCount = snapshotData?.analysis.removals.length ?? 0;
@@ -357,6 +362,78 @@ export default function StaleDevicesPage() {
     }
   };
 
+  const exportRows = useMemo(
+    () =>
+      filteredDevices.map((device) => ({
+        "Device Name": device.deviceName,
+        "Device Type": device.deviceType,
+        "Device Profile ID": device.deviceProfileId ?? "",
+        "Last Activity": device.lastActivityAt
+          ? format(new Date(device.lastActivityAt), "yyyy-MM-dd HH:mm")
+          : "Never",
+        "Days Inactive": device.daysSinceActivity === 999
+          ? "N/A"
+          : device.daysSinceActivity,
+        "Days on List": device.consecutiveStaleDays,
+      })),
+    [filteredDevices]
+  );
+
+  const handleExport = async (format: "csv" | "xlsx") => {
+    if (exportRows.length === 0) return;
+    const fileBase = `stale-devices-${effectiveDate}`;
+
+    if (format === "csv") {
+      const headers = Object.keys(exportRows[0] || {});
+      const escapeValue = (value: unknown) => {
+        const stringValue = String(value ?? "");
+        if (stringValue.includes(",") || stringValue.includes("\"") || stringValue.includes("\n")) {
+          return `"${stringValue.replace(/\"/g, "\"\"")}"`;
+        }
+        return stringValue;
+      };
+      const rows = exportRows.map((row) =>
+        headers.map((header) => escapeValue((row as Record<string, unknown>)[header])).join(",")
+      );
+      const csv = [headers.join(","), ...rows].join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${fileBase}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    const { Workbook } = await import("exceljs");
+    const workbook = new Workbook();
+    const worksheet = workbook.addWorksheet("Stale Devices");
+    const headers = Object.keys(exportRows[0] || {});
+    worksheet.columns = headers.map((header) => ({
+      header,
+      key: header,
+      width: Math.max(12, header.length + 2),
+    }));
+    exportRows.forEach((row) => {
+      worksheet.addRow(row);
+    });
+    const data = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([data], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${fileBase}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -366,7 +443,7 @@ export default function StaleDevicesPage() {
             Stale Device Tracking
           </h1>
           <p className="text-muted-foreground">
-            Track devices that haven't communicated recently
+            Track devices that have not communicated recently
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -471,7 +548,7 @@ export default function StaleDevicesPage() {
           <>
             <MetricCard
               title="Total Stale"
-              value={staleCount}
+              value={totalStaleCount}
               icon={<AlertTriangle className="h-5 w-5 text-amber-500" />}
               subtitle={`Threshold: ${snapshotData?.currentSnapshot?.staleDays ?? threshold}+ days`}
               trend={
@@ -515,8 +592,8 @@ export default function StaleDevicesPage() {
                 No Snapshot Available
               </h3>
               <p className="text-muted-foreground mb-4">
-                No snapshot data exists for {selectedDate}. Click "Capture
-                Snapshot" to create one now.
+                No snapshot data exists for {selectedDate}. Click Capture
+                Snapshot to create one now.
               </p>
               <Button onClick={handleTriggerSnapshot} disabled={triggerSnapshot.isPending}>
                 {triggerSnapshot.isPending ? (
@@ -629,9 +706,29 @@ export default function StaleDevicesPage() {
           <TabsContent value="all">
             <Card>
               <CardHeader>
-                <CardTitle>
-                  All Stale Devices ({effectiveDate})
-                </CardTitle>
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <CardTitle>
+                    All Stale Devices ({effectiveDate})
+                  </CardTitle>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleExport("csv")}
+                      disabled={exportRows.length === 0}
+                    >
+                      Export CSV
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleExport("xlsx")}
+                      disabled={exportRows.length === 0}
+                    >
+                      Export XLSX
+                    </Button>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
                 {isLoadingSnapshots ? (

@@ -12,7 +12,6 @@ import {
   CommandEmpty,
   CommandGroup,
   CommandInput,
-  CommandItem,
   CommandList,
 } from "@/components/ui/command";
 import {
@@ -47,9 +46,7 @@ interface MultiSelectProps
   onValueChange: (value: string[]) => void;
   defaultValue: string[];
   placeholder?: string;
-  animation?: number;
   maxCount?: number;
-  asChild?: boolean;
   className?: string;
 }
 
@@ -61,9 +58,7 @@ const MultiSelect = React.forwardRef<HTMLButtonElement, MultiSelectProps>(
       variant,
       defaultValue = [],
       placeholder = "Select options",
-      animation = 0,
       maxCount = 3,
-      asChild = false,
       className,
       ...props
     },
@@ -114,6 +109,11 @@ const MultiSelect = React.forwardRef<HTMLButtonElement, MultiSelectProps>(
       onValueChange([]);
     };
 
+    const handleMouseDown = (event: React.MouseEvent) => {
+      event.stopPropagation();
+      event.preventDefault();
+    };
+
     return (
       <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
         <PopoverTrigger asChild>
@@ -121,7 +121,7 @@ const MultiSelect = React.forwardRef<HTMLButtonElement, MultiSelectProps>(
             ref={ref}
             {...props}
             onClick={() => setIsPopoverOpen(!isPopoverOpen)}
-            className="w-full justify-between"
+            className={cn("w-full justify-between", className)}
             variant="outline"
           >
             {selectedValues.length > 0 ? (
@@ -135,10 +135,14 @@ const MultiSelect = React.forwardRef<HTMLButtonElement, MultiSelectProps>(
                         className={cn(multiSelectVariants({ variant }))}
                       >
                         {option?.label}
-                        <X
-                          className="ml-2 h-4 w-4 cursor-pointer"
+                        <button
+                          type="button"
+                          className="ml-1 inline-flex items-center"
+                          onMouseDown={handleMouseDown}
                           onClick={(event) => removeOption(event, value)}
-                        />
+                        >
+                          <X className="h-4 w-4 cursor-pointer" />
+                        </button>
                       </Badge>
                     );
                   })}
@@ -154,10 +158,14 @@ const MultiSelect = React.forwardRef<HTMLButtonElement, MultiSelectProps>(
                   )}
                 </div>
                 <div className="flex items-center justify-between">
-                  <X
-                    className="h-4 mx-2 cursor-pointer"
+                  <button
+                    type="button"
+                    className="mx-2 inline-flex items-center"
+                    onMouseDown={handleMouseDown}
                     onClick={clearAll}
-                  />
+                  >
+                    <X className="h-4 cursor-pointer" />
+                  </button>
                   <ChevronsUpDown className="h-4" />
                 </div>
               </div>

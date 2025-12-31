@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { parseISO, startOfDay } from "date-fns";
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 import { getSession } from "@/lib/auth";
 
 interface StaleDeviceDetail {
@@ -65,7 +66,7 @@ export async function GET(request: Request) {
       : null;
 
     // Build device filter for Prisma query
-    const deviceWhereClause: any = {};
+    const deviceWhereClause: Prisma.StaleDeviceRecordWhereInput = {};
     if (deviceTypesFilter?.length) {
       deviceWhereClause.deviceType = { in: deviceTypesFilter };
     }
