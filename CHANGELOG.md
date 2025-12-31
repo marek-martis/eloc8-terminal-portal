@@ -74,6 +74,7 @@ All notable changes to this project will be documented in this file.
 - Map zoom issues caused by repeated fitBounds calls on device updates
 - MultiSelect component now fully controlled with proper X button handling (fixes cmdk v1.x compatibility issue)
 - MultiSelect clear/remove controls no longer cause nested button hydration errors
+- Stale device snapshot creation now guards against invalid activity timestamps
 - Profile filter in stale devices page now uses local database IDs that match stored snapshot data
 - Profiles API (`/api/stale-devices/profiles`) now fetches from local database instead of ThingsBoard (IDs match snapshots)
 - Added `getDeviceProfiles()` method to ThingsBoard client for fetching tenant device profiles

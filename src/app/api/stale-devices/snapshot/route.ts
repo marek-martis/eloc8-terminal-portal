@@ -83,13 +83,22 @@ export async function POST(request: Request) {
       });
 
       for (const device of response.data) {
+        const activityValue = typeof device.lastActivityTime === "number"
+          ? device.lastActivityTime
+          : device.lastActivityTime
+            ? Number(device.lastActivityTime)
+            : null;
+        const activityDate = activityValue && Number.isFinite(activityValue)
+          ? new Date(activityValue)
+          : null;
+
         staleDevices.push({
           id: device.entityId.id,
           name: device.name,
           type: device.type,
           deviceProfileId: device.deviceProfileId,
-          lastActivityAt: device.lastActivityTime
-            ? new Date(device.lastActivityTime).toISOString()
+          lastActivityAt: activityDate
+            ? activityDate.toISOString()
             : undefined,
         });
       }
@@ -139,53 +148,62 @@ export async function POST(request: Request) {
       previousSnapshot?.devices.map((d) => [d.thingsboardDeviceId, d]) || []
     );
 
-    // Create the new snapshot with device records
+    // Create the new snapshot, then insert records in batches to avoid oversized writes.
     const snapshot = await prisma.staleDeviceSnapshot.create({
       data: {
         snapshotDate: today,
         staleDays,
         totalDevices,
         staleCount: staleDevices.length,
-        devices: {
-          create: staleDevices.map((device) => {
-            const previousRecord = previousDeviceMap.get(device.id);
-            const lastActivityAt = device.lastActivityAt
-              ? new Date(device.lastActivityAt)
-              : null;
-
-            // Calculate days since last activity
-            const daysSinceActivity = lastActivityAt
-              ? Math.floor(
-                  (today.getTime() - lastActivityAt.getTime()) /
-                    (24 * 60 * 60 * 1000)
-                )
-              : 999; // Large number for devices with no telemetry
-
-            // Look up local profile ID from the synced profiles
-            const localProfileId = device.deviceProfileId
-              ? profileMap.get(device.deviceProfileId) || null
-              : null;
-
-            return {
-              thingsboardDeviceId: device.id,
-              deviceName: device.name,
-              deviceType: device.type,
-              deviceProfileId: localProfileId,
-              lastActivityAt,
-              daysSinceActivity,
-              // If device was stale yesterday, continue tracking
-              firstSeenStaleAt: previousRecord?.firstSeenStaleAt || today,
-              consecutiveStaleDays: previousRecord
-                ? previousRecord.consecutiveStaleDays + 1
-                : 1,
-            };
-          }),
-        },
-      },
-      include: {
-        devices: true,
       },
     });
+
+    const deviceRecords = staleDevices.map((device) => {
+      const previousRecord = previousDeviceMap.get(device.id);
+      const lastActivityAt = device.lastActivityAt
+        ? new Date(device.lastActivityAt)
+        : null;
+      const normalizedLastActivityAt =
+        lastActivityAt && Number.isFinite(lastActivityAt.getTime())
+          ? lastActivityAt
+          : null;
+
+      const daysSinceActivity = normalizedLastActivityAt
+        ? Math.floor(
+            (today.getTime() - normalizedLastActivityAt.getTime()) /
+              (24 * 60 * 60 * 1000)
+          )
+        : 999;
+
+      const localProfileId = device.deviceProfileId
+        ? profileMap.get(device.deviceProfileId) || null
+        : null;
+
+      return {
+        snapshotId: snapshot.id,
+        thingsboardDeviceId: device.id,
+        deviceName: device.name,
+        deviceType: device.type,
+        deviceProfileId: localProfileId,
+        lastActivityAt: normalizedLastActivityAt,
+        daysSinceActivity,
+        firstSeenStaleAt: previousRecord?.firstSeenStaleAt || today,
+        consecutiveStaleDays: previousRecord
+          ? previousRecord.consecutiveStaleDays + 1
+          : 1,
+      };
+    });
+
+    const batchSize = 1000;
+    try {
+      for (let i = 0; i < deviceRecords.length; i += batchSize) {
+        const batch = deviceRecords.slice(i, i + batchSize);
+        await prisma.staleDeviceRecord.createMany({ data: batch });
+      }
+    } catch (writeError) {
+      await prisma.staleDeviceSnapshot.delete({ where: { id: snapshot.id } });
+      throw writeError;
+    }
 
     return NextResponse.json({
       message: "Snapshot created successfully",

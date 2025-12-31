@@ -122,8 +122,9 @@ export function useTriggerSnapshot() {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to trigger snapshot");
+        const error = await response.json().catch(() => ({}));
+        const detail = error.error ? `: ${error.error}` : "";
+        throw new Error((error.message || "Failed to trigger snapshot") + detail);
       }
 
       return response.json() as Promise<SnapshotResult>;
