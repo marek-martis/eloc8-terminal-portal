@@ -15,6 +15,11 @@ export const MAX_CONCURRENT_TELEMETRY_REQUESTS = 10;
 export const DEFAULT_STALE_DAYS = 2;
 
 /**
+ * Devices with lastActivityTime within this window are considered active.
+ */
+export const ACTIVE_WINDOW_MINUTES = 5;
+
+/**
  * Date range presets for analytics
  */
 export const DATE_RANGE_PRESETS = {
@@ -28,7 +33,7 @@ export const DATE_RANGE_PRESETS = {
 /**
  * Default telemetry keys for charts (user can customize)
  */
-export const DEFAULT_TELEMETRY_KEYS = ["speed", "battery", "signal"];
+export const DEFAULT_TELEMETRY_KEYS = ["vbat"];
 
 /**
  * Aggregation options for historical telemetry

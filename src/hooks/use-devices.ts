@@ -9,6 +9,8 @@ interface DeviceFilters {
   pageSize?: number;
   page?: number;
   fetchAll?: boolean;
+  sortBy?: "name" | "lastActivityTime";
+  sortDir?: "ASC" | "DESC";
 }
 
 export interface Device {
@@ -35,6 +37,8 @@ export function useDevices(filters?: DeviceFilters) {
       if (filters?.pageSize) params.set("pageSize", String(filters.pageSize));
       if (filters?.page) params.set("page", String(filters.page));
       if (filters?.fetchAll) params.set("fetchAll", "true");
+      if (filters?.sortBy) params.set("sortBy", filters.sortBy);
+      if (filters?.sortDir) params.set("sortDir", filters.sortDir);
 
       const response = await fetch(`/api/devices?${params}`);
       if (!response.ok) throw new Error("Failed to fetch devices");

@@ -139,6 +139,16 @@ export class ThingsboardClient {
   }
 
   /**
+   * Run an entity data query using ThingsBoard's entitiesQuery/find endpoint.
+   */
+  async findEntityData<T>(query: unknown): Promise<T> {
+    return this.authenticatedRequest("/api/entitiesQuery/find", {
+      method: "POST",
+      body: JSON.stringify(query),
+    });
+  }
+
+  /**
    * Count entities matching query criteria using ThingsBoard's entitiesQuery API.
    * Much more efficient than fetching all entities and counting client-side.
    */
@@ -254,6 +264,35 @@ export class ThingsboardClient {
             operation: "LESS",
             value: {
               defaultValue: cutoffTime,
+              dynamicValue: null,
+            },
+            type: "NUMERIC",
+          },
+        },
+      ],
+    });
+  }
+
+  /**
+   * Count devices active since a specific timestamp using lastActivityTime.
+   */
+  async countDevicesByLastActivityTime(sinceTimestamp: number): Promise<number> {
+    return this.countEntitiesByQuery({
+      entityFilter: {
+        type: "entityType",
+        entityType: "DEVICE",
+      },
+      keyFilters: [
+        {
+          key: {
+            type: "SERVER_ATTRIBUTE",
+            key: "lastActivityTime",
+          },
+          valueType: "NUMERIC",
+          predicate: {
+            operation: "GREATER",
+            value: {
+              defaultValue: sinceTimestamp,
               dynamicValue: null,
             },
             type: "NUMERIC",

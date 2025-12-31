@@ -39,18 +39,21 @@ All notable changes to this project will be documented in this file.
 - CLAUDE.md documentation for AI-assisted development
 - ThingsBoard `entitiesQuery/count` API methods for efficient device counting
 - ThingsBoard `entitiesQuery/find` API methods (`findStaleDevices`, `findAllDevicesWithActivity`) for efficient server-side filtering
+- Device type summary API endpoint (`/api/devices/type-summary`) for analytics charts
+- Devices API now supports status filtering (`status=active|inactive`) using `lastActivityTime`
 
 ### Changed
 - **Migrated `middleware.ts` to `proxy.ts`** for Next.js 16 compatibility (renamed function from `middleware` to `proxy`)
 - Updated docker-compose.yml to expose postgres port to host
-- **Active/inactive status now uses ThingsBoard server attribute (`active: true/false`) instead of telemetry timestamps**
+- **Active/inactive status now uses `lastActivityTime` with a rolling activity window**
 - Renamed `isOnline` to `isActive` in Device interface for consistency with ThingsBoard
 - Map page and Dashboard now show "Active/Inactive" instead of "Online/Offline"
 - **Live Map now displays only active devices** (inactive devices filtered out)
 - Map only fits bounds on initial load, preserving user zoom level
 - **Stats API now uses ThingsBoard `entitiesQuery/count` for O(1) device counting** (2 API calls instead of N+1)
-- Devices API now supports `fetchAll=true` parameter to fetch all devices across pages
-- Analytics page uses `useAllDevices` hook to show complete device list
+- Devices API now supports `fetchAll=true`, plus `sortBy`/`sortDir` for server-side sorting
+- Analytics page uses paged device search for selectors instead of loading all devices
+- Live Tracking Map now requests active devices only and uses stats API for totals
 - Updated sidebar navigation with "Stale Tracking" link
 - Added stale threshold options to constants (1 day to 1 month)
 - **Stale device snapshot creation now uses `entitiesQuery/find` API** - reduces API calls from N+1 (1000+ for large fleets) to 2-3 calls

@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { subDays } from "date-fns";
 import type { DateRange } from "react-day-picker";
-import { useAllDevices } from "@/hooks/use-devices";
+import { useDevices } from "@/hooks/use-devices";
 import { useFleetAnalytics } from "@/hooks/use-fleet-analytics";
+import { useDeviceStats } from "@/hooks/use-device-stats";
+import { useDeviceTypeSummary } from "@/hooks/use-device-type-summary";
 import {
   useHistoricalTelemetry,
   transformTelemetryForChart,
@@ -19,6 +21,7 @@ import { ExportButton } from "@/components/ui/export-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -44,8 +47,28 @@ export default function AnalyticsPage() {
     to: new Date(),
   });
   const [telemetryKeys] = useState<string[]>(DEFAULT_TELEMETRY_KEYS);
+  const [deviceSearch, setDeviceSearch] = useState("");
+  const [debouncedDeviceSearch, setDebouncedDeviceSearch] = useState("");
 
-  const { data: devicesData, isLoading: isLoadingDevices, error } = useAllDevices();
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedDeviceSearch(deviceSearch.trim());
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [deviceSearch]);
+
+  const { data: statsData, isLoading: isLoadingStats, error: statsError } = useDeviceStats();
+  const { data: typeSummary, isLoading: isLoadingTypes, error: typeError } = useDeviceTypeSummary();
+  const { data: recentDevicesData, isLoading: isLoadingRecent, error: recentError } = useDevices({
+    pageSize: 10,
+    sortBy: "lastActivityTime",
+    sortDir: "DESC",
+  });
+  const { data: deviceSearchData, isLoading: isLoadingDeviceSearch } = useDevices({
+    search: debouncedDeviceSearch || undefined,
+    pageSize: 25,
+    sortBy: "name",
+  });
   const { data: fleetData, isLoading: isLoadingFleet } = useFleetAnalytics();
   const { data: historicalData, isLoading: isLoadingHistory } = useHistoricalTelemetry(
     selectedDeviceId || undefined,
@@ -58,7 +81,9 @@ export default function AnalyticsPage() {
     { enabled: !!selectedDeviceId }
   );
 
-  if (error) {
+  const hasError = Boolean(statsError || typeError || recentError);
+
+  if (hasError) {
     return (
       <div className="flex items-center justify-center h-full">
         <p className="text-red-500">Failed to load analytics data</p>
@@ -66,22 +91,19 @@ export default function AnalyticsPage() {
     );
   }
 
-  const devices = devicesData?.data || [];
-  const onlineCount = devices.filter((d) => d.isActive).length;
-  const offlineCount = devices.length - onlineCount;
+  const totalDevices = statsData?.total ?? 0;
+  const onlineCount = statsData?.active ?? 0;
+  const offlineCount = statsData?.inactive ?? 0;
   const onlinePercentage =
-    devices.length > 0 ? Math.round((onlineCount / devices.length) * 100) : 0;
+    totalDevices > 0 ? Math.round((onlineCount / totalDevices) * 100) : 0;
 
-  const deviceTypes = devices.reduce(
-    (acc, device) => {
-      acc[device.type] = (acc[device.type] || 0) + 1;
-      return acc;
-    },
-    {} as Record<string, number>
-  );
+  const deviceTypes = typeSummary?.types || {};
+  const deviceTypeEntries = Object.entries(deviceTypes);
+  const devicesForSelect = deviceSearchData?.data || [];
+  const recentDevices = recentDevicesData?.data || [];
 
   const chartData = transformTelemetryForChart(historicalData?.data);
-  const selectedDevice = devices.find((d) => d.id === selectedDeviceId);
+  const selectedDevice = devicesForSelect.find((d) => d.id === selectedDeviceId);
 
   return (
     <div className="space-y-6">
@@ -117,7 +139,7 @@ export default function AnalyticsPage() {
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {isLoadingDevices ? (
+            {isLoadingStats || isLoadingTypes ? (
               <>
                 {[...Array(4)].map((_, i) => (
                   <Skeleton key={i} className="h-32" />
@@ -127,7 +149,7 @@ export default function AnalyticsPage() {
               <>
                 <MetricCard
                   title="Total Devices"
-                  value={devices.length}
+                  value={totalDevices}
                   icon={<Radio className="h-4 w-4 text-muted-foreground" />}
                 />
                 <MetricCard
@@ -147,7 +169,7 @@ export default function AnalyticsPage() {
                 />
                 <MetricCard
                   title="Device Types"
-                  value={Object.keys(deviceTypes).length}
+                  value={typeSummary?.uniqueTypes ?? 0}
                   icon={<Activity className="h-4 w-4 text-muted-foreground" />}
                 />
               </>
@@ -160,7 +182,7 @@ export default function AnalyticsPage() {
                 <CardTitle>Device Status Distribution</CardTitle>
               </CardHeader>
               <CardContent>
-                {isLoadingDevices ? (
+                {isLoadingStats ? (
                   <Skeleton className="h-[250px]" />
                 ) : (
                   <DeviceStatusChart online={onlineCount} offline={offlineCount} />
@@ -173,7 +195,7 @@ export default function AnalyticsPage() {
                 <CardTitle>Device Types</CardTitle>
               </CardHeader>
               <CardContent>
-                {isLoadingDevices ? (
+                {isLoadingTypes ? (
                   <div className="space-y-3">
                     {[...Array(3)].map((_, i) => (
                       <Skeleton key={i} className="h-10" />
@@ -181,7 +203,7 @@ export default function AnalyticsPage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {Object.entries(deviceTypes).map(([type, count]) => (
+                    {deviceTypeEntries.map(([type, count]) => (
                       <div key={type} className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div className="w-3 h-3 rounded-full bg-blue-500" />
@@ -193,7 +215,7 @@ export default function AnalyticsPage() {
                             <div
                               className="h-full bg-blue-500 rounded-full"
                               style={{
-                                width: `${(count / devices.length) * 100}%`,
+                                width: `${totalDevices > 0 ? (count / totalDevices) * 100 : 0}%`,
                               }}
                             />
                           </div>
@@ -211,7 +233,7 @@ export default function AnalyticsPage() {
               <CardTitle>Recent Activity</CardTitle>
             </CardHeader>
             <CardContent>
-              {isLoadingDevices ? (
+              {isLoadingRecent ? (
                 <div className="space-y-3">
                   {[...Array(5)].map((_, i) => (
                     <Skeleton key={i} className="h-12" />
@@ -219,15 +241,7 @@ export default function AnalyticsPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {devices
-                    .filter((d) => d.lastTelemetryAt)
-                    .sort(
-                      (a, b) =>
-                        new Date(b.lastTelemetryAt!).getTime() -
-                        new Date(a.lastTelemetryAt!).getTime()
-                    )
-                    .slice(0, 10)
-                    .map((device) => (
+                  {recentDevices.map((device) => (
                       <div
                         key={device.id}
                         className="flex items-center justify-between py-2 border-b last:border-0"
@@ -264,18 +278,36 @@ export default function AnalyticsPage() {
             <CardHeader>
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <CardTitle>Device Telemetry History</CardTitle>
-                <Select value={selectedDeviceId} onValueChange={setSelectedDeviceId}>
-                  <SelectTrigger className="w-[250px]">
-                    <SelectValue placeholder="Select a device" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {devices.map((device) => (
-                      <SelectItem key={device.id} value={device.id}>
-                        {device.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex flex-col gap-2">
+                  <Input
+                    placeholder="Search devices..."
+                    value={deviceSearch}
+                    onChange={(e) => setDeviceSearch(e.target.value)}
+                    className="w-[250px]"
+                  />
+                  <Select value={selectedDeviceId} onValueChange={setSelectedDeviceId}>
+                    <SelectTrigger className="w-[250px]">
+                      <SelectValue placeholder="Select a device" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {isLoadingDeviceSearch ? (
+                        <SelectItem value="loading" disabled>
+                          Loading devices...
+                        </SelectItem>
+                      ) : devicesForSelect.length === 0 ? (
+                        <SelectItem value="empty" disabled>
+                          No devices found
+                        </SelectItem>
+                      ) : (
+                        devicesForSelect.map((device) => (
+                          <SelectItem key={device.id} value={device.id}>
+                            {device.name}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -347,18 +379,36 @@ export default function AnalyticsPage() {
             <CardHeader>
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <CardTitle>Device Activity Timeline</CardTitle>
-                <Select value={selectedDeviceId} onValueChange={setSelectedDeviceId}>
-                  <SelectTrigger className="w-[250px]">
-                    <SelectValue placeholder="Select a device" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {devices.map((device) => (
-                      <SelectItem key={device.id} value={device.id}>
-                        {device.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex flex-col gap-2">
+                  <Input
+                    placeholder="Search devices..."
+                    value={deviceSearch}
+                    onChange={(e) => setDeviceSearch(e.target.value)}
+                    className="w-[250px]"
+                  />
+                  <Select value={selectedDeviceId} onValueChange={setSelectedDeviceId}>
+                    <SelectTrigger className="w-[250px]">
+                      <SelectValue placeholder="Select a device" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {isLoadingDeviceSearch ? (
+                        <SelectItem value="loading" disabled>
+                          Loading devices...
+                        </SelectItem>
+                      ) : devicesForSelect.length === 0 ? (
+                        <SelectItem value="empty" disabled>
+                          No devices found
+                        </SelectItem>
+                      ) : (
+                        devicesForSelect.map((device) => (
+                          <SelectItem key={device.id} value={device.id}>
+                            {device.name}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -407,10 +457,10 @@ export default function AnalyticsPage() {
                   icon={<Gauge className="h-4 w-4 text-amber-500" />}
                 />
                 <MetricCard
-                  title="Avg Battery"
+                  title="Avg Vbat"
                   value={
                     fleetData?.averageBattery !== null
-                      ? `${fleetData?.averageBattery}%`
+                      ? `${fleetData?.averageBattery}`
                       : "N/A"
                   }
                   icon={<Battery className="h-4 w-4 text-green-500" />}
@@ -437,7 +487,7 @@ export default function AnalyticsPage() {
                       <tr className="border-b">
                         <th className="text-left py-3 px-2 font-medium">Device</th>
                         <th className="text-right py-3 px-2 font-medium">Speed</th>
-                        <th className="text-right py-3 px-2 font-medium">Battery</th>
+                        <th className="text-right py-3 px-2 font-medium">Vbat</th>
                         <th className="text-right py-3 px-2 font-medium">
                           Last Activity
                         </th>
@@ -451,7 +501,7 @@ export default function AnalyticsPage() {
                             {device.speed !== null ? device.speed.toFixed(1) : "—"}
                           </td>
                           <td className="py-3 px-2 text-right">
-                            {device.battery !== null ? `${device.battery}%` : "—"}
+                            {device.battery !== null ? device.battery.toFixed(2) : "—"}
                           </td>
                           <td className="py-3 px-2 text-right text-muted-foreground">
                             {device.lastActivityTime

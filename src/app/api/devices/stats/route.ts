@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createThingsboardClient } from "@/lib/thingsboard";
-import { DEFAULT_STALE_DAYS } from "@/lib/constants";
+import { ACTIVE_WINDOW_MINUTES, DEFAULT_STALE_DAYS } from "@/lib/constants";
 import { getSession } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
@@ -31,9 +31,10 @@ export async function GET(request: NextRequest) {
     // Use ThingsBoard's entitiesQuery/count API for efficient counting
     // This is much faster than fetching all devices and counting client-side
     try {
+      const activeThreshold = Date.now() - ACTIVE_WINDOW_MINUTES * 60 * 1000;
       const [total, active, stale] = await Promise.all([
         tbClient.countDevices(),
-        tbClient.countDevicesByAttribute("active", true, "SERVER_SCOPE"),
+        tbClient.countDevicesByLastActivityTime(activeThreshold),
         tbClient.countStaleDevices(staleDays),
       ]);
 

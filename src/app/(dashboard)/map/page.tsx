@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { MapContainer } from "@/components/map/map-container";
 import { useDevices } from "@/hooks/use-devices";
+import { useDeviceStats } from "@/hooks/use-device-stats";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -10,7 +11,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Search, Radio } from "lucide-react";
 
 export default function MapPage() {
-  const { data, isLoading, error } = useDevices();
+  const { data, isLoading, error } = useDevices({ status: "active", fetchAll: true });
+  const { data: statsData, isLoading: isLoadingStats } = useDeviceStats();
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>();
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -26,8 +28,8 @@ export default function MapPage() {
       device.type.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const activeCount = activeDevices.length;
-  const inactiveCount = allDevices.length - activeCount;
+  const activeCount = statsData?.active ?? activeDevices.length;
+  const inactiveCount = statsData?.inactive ?? 0;
 
   if (error) {
     return (
@@ -47,11 +49,15 @@ export default function MapPage() {
           <CardContent className="flex gap-4">
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full bg-green-500" />
-              <span className="text-sm">{activeCount} Active</span>
+              <span className="text-sm">
+                {isLoadingStats ? "…" : activeCount} Active
+              </span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full bg-gray-400" />
-              <span className="text-sm">{inactiveCount} Inactive</span>
+              <span className="text-sm">
+                {isLoadingStats ? "…" : inactiveCount} Inactive
+              </span>
             </div>
           </CardContent>
         </Card>

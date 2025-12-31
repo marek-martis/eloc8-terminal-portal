@@ -25,7 +25,7 @@ interface UseFleetAnalyticsOptions {
 }
 
 export function useFleetAnalytics(options: UseFleetAnalyticsOptions = {}) {
-  const { keys = ["speed", "battery"], enabled = true } = options;
+  const { keys = ["vbat"], enabled = true } = options;
 
   return useQuery({
     queryKey: ["fleetAnalytics", keys],

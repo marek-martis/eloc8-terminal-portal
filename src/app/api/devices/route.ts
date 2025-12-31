@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createThingsboardClient } from "@/lib/thingsboard";
 import { getSession } from "@/lib/auth";
+import { ACTIVE_WINDOW_MINUTES } from "@/lib/constants";
+
+const ENTITY_QUERY_PAGE_SIZE = 1000;
 
 export async function GET(request: Request) {
   try {
@@ -13,31 +16,122 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get("type") || undefined;
     const search = searchParams.get("search") || undefined;
-    const page = parseInt(searchParams.get("page") || "0");
-    const pageSize = parseInt(searchParams.get("pageSize") || "100");
+    const page = parseInt(searchParams.get("page") || "0", 10);
+    const pageSize = parseInt(searchParams.get("pageSize") || "100", 10);
     const fetchAll = searchParams.get("fetchAll") === "true";
+    const status = searchParams.get("status") || undefined;
+    const sortBy = searchParams.get("sortBy") || "name";
+    const sortDir = searchParams.get("sortDir") === "DESC" ? "DESC" : "ASC";
 
     const tbClient = createThingsboardClient({
       accessToken: session.tbToken,
       refreshToken: session.tbRefreshToken,
     });
 
-    let allDevices: Array<{ id: { id: string }; name: string; type: string; label?: string }> = [];
+    const keyFilters: Array<{
+      key: { type: string; key: string };
+      valueType: string;
+      predicate: { operation: string; value: { defaultValue: unknown; dynamicValue: null }; type: string };
+    }> = [];
+
+    if (type) {
+      keyFilters.push({
+        key: { type: "ENTITY_FIELD", key: "type" },
+        valueType: "STRING",
+        predicate: {
+          operation: "EQUAL",
+          value: { defaultValue: type, dynamicValue: null },
+          type: "STRING",
+        },
+      });
+    }
+
+    if (search) {
+      keyFilters.push({
+        key: { type: "ENTITY_FIELD", key: "name" },
+        valueType: "STRING",
+        predicate: {
+          operation: "CONTAINS",
+          value: { defaultValue: search, dynamicValue: null },
+          type: "STRING",
+        },
+      });
+    }
+
+    if (status === "active" || status === "inactive") {
+      const activeThreshold = Date.now() - ACTIVE_WINDOW_MINUTES * 60 * 1000;
+      keyFilters.push({
+        key: { type: "SERVER_ATTRIBUTE", key: "lastActivityTime" },
+        valueType: "NUMERIC",
+        predicate: {
+          operation: status === "active" ? "GREATER" : "LESS",
+          value: { defaultValue: activeThreshold, dynamicValue: null },
+          type: "NUMERIC",
+        },
+      });
+    }
+
+    const sortKey = sortBy === "lastActivityTime"
+      ? { key: "lastActivityTime", type: "SERVER_ATTRIBUTE" as const }
+      : { key: "name", type: "ENTITY_FIELD" as const };
+
+    const baseQuery = {
+      entityFilter: {
+        type: "entityType",
+        resolveMultiple: true,
+        entityType: "DEVICE",
+      },
+      ...(keyFilters.length > 0 ? { keyFilters } : {}),
+      entityFields: [
+        { type: "ENTITY_FIELD", key: "name" },
+        { type: "ENTITY_FIELD", key: "type" },
+        { type: "ENTITY_FIELD", key: "label" },
+      ],
+      latestValues: [
+        { type: "SERVER_ATTRIBUTE", key: "lastActivityTime" },
+        { type: "TIME_SERIES", key: "latitude" },
+        { type: "TIME_SERIES", key: "longitude" },
+      ],
+    };
+
+    type EntityDataItem = {
+      entityId: { id: string; entityType: string };
+      latest?: {
+        ENTITY_FIELD?: Record<string, { ts: number; value: string }>;
+        SERVER_ATTRIBUTE?: Record<string, { ts: number; value: number | string }>;
+        TIME_SERIES?: Record<string, { ts: number; value: number | string }>;
+      };
+    };
+
+    type EntityDataResponse = {
+      data: EntityDataItem[];
+      totalElements: number;
+      totalPages: number;
+      hasNext: boolean;
+    };
+
+    const activeThreshold = Date.now() - ACTIVE_WINDOW_MINUTES * 60 * 1000;
+    let allDevices: EntityDataItem[] = [];
     let totalElements = 0;
 
     try {
       if (fetchAll) {
-        // Fetch all devices by paginating through all pages
-        const batchSize = 100;
+        // Fetch all devices in batches using entitiesQuery/find
+        const batchSize = ENTITY_QUERY_PAGE_SIZE;
         let currentPage = 0;
         let hasMore = true;
 
         while (hasMore) {
-          const result = await tbClient.getDevices({
-            type,
-            textSearch: search,
-            page: currentPage,
-            pageSize: batchSize,
+          const result = await tbClient.findEntityData<EntityDataResponse>({
+            ...baseQuery,
+            pageLink: {
+              page: currentPage,
+              pageSize: batchSize,
+              sortOrder: {
+                key: sortKey,
+                direction: sortDir,
+              },
+            },
           });
 
           allDevices = allDevices.concat(result.data);
@@ -46,13 +140,18 @@ export async function GET(request: Request) {
           currentPage++;
         }
       } else {
-        // Fetch single page
-        const result = await tbClient.getDevices({
-          type,
-          textSearch: search,
-          page,
-          pageSize,
+        const result = await tbClient.findEntityData<EntityDataResponse>({
+          ...baseQuery,
+          pageLink: {
+            page,
+            pageSize,
+            sortOrder: {
+              key: sortKey,
+              direction: sortDir,
+            },
+          },
         });
+
         allDevices = result.data;
         totalElements = result.totalElements;
       }
@@ -64,52 +163,40 @@ export async function GET(request: Request) {
       );
     }
 
-    const devices = await Promise.all(
-      allDevices.map(async (device) => {
-        try {
-          // Fetch telemetry and server attributes in parallel
-          const [telemetry, attributes] = await Promise.all([
-            tbClient.getLatestTelemetry(device.id.id, ["latitude", "longitude"]),
-            tbClient.getDeviceAttributes(device.id.id, "SERVER_SCOPE"),
-          ]);
+    const devices = allDevices.map((device) => {
+      const fields = device.latest?.ENTITY_FIELD;
+      const serverAttrs = device.latest?.SERVER_ATTRIBUTE;
+      const timeSeries = device.latest?.TIME_SERIES;
 
-          const lat = telemetry.latitude?.[0]?.value;
-          const lng = telemetry.longitude?.[0]?.value;
+      const lastActivityRaw = serverAttrs?.lastActivityTime?.value;
+      const lastActivityTime = typeof lastActivityRaw === "number"
+        ? lastActivityRaw
+        : lastActivityRaw
+          ? Number(lastActivityRaw)
+          : null;
 
-          // Get active status from server attributes
-          const activeAttr = (attributes as Array<{ key: string; value: unknown }>)?.find(
-            (attr) => attr.key === "active"
-          );
-          const isActive = activeAttr?.value === true || activeAttr?.value === "true";
+      const latRaw = timeSeries?.latitude?.value;
+      const lngRaw = timeSeries?.longitude?.value;
+      const lat = latRaw === null || latRaw === undefined ? null : parseFloat(String(latRaw));
+      const lng = lngRaw === null || lngRaw === undefined ? null : parseFloat(String(lngRaw));
 
-          return {
-            id: device.id.id,
-            name: device.name,
-            type: device.type,
-            label: device.label,
-            isActive,
-            location:
-              lat && lng
-                ? {
-                    lat: parseFloat(String(lat)),
-                    lng: parseFloat(String(lng)),
-                  }
-                : undefined,
-            lastTelemetryAt: telemetry.latitude?.[0]?.ts
-              ? new Date(telemetry.latitude[0].ts).toISOString()
-              : undefined,
-          };
-        } catch {
-          return {
-            id: device.id.id,
-            name: device.name,
-            type: device.type,
-            label: device.label,
-            isActive: false,
-          };
-        }
-      })
-    );
+      const isActive = lastActivityTime !== null && lastActivityTime > activeThreshold;
+
+      return {
+        id: device.entityId.id,
+        name: fields?.name?.value || "",
+        type: fields?.type?.value || "",
+        label: fields?.label?.value || undefined,
+        isActive,
+        location:
+          lat !== null && !Number.isNaN(lat) && lng !== null && !Number.isNaN(lng)
+            ? { lat, lng }
+            : undefined,
+        lastTelemetryAt: lastActivityTime
+          ? new Date(lastActivityTime).toISOString()
+          : undefined,
+      };
+    });
 
     return NextResponse.json({
       data: devices,
