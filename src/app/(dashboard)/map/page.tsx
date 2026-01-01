@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { MapContainer } from "@/components/map/map-container";
 import { useDevices } from "@/hooks/use-devices";
 import { useDeviceStats } from "@/hooks/use-device-stats";
+import { useMultipleTelemetry } from "@/hooks/use-telemetry";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -19,14 +20,29 @@ export default function MapPage() {
   const allDevices = data?.data || [];
 
   // Only show active devices on the map
-  const activeDevices = allDevices.filter((d) => d.isActive);
+  const activeDevices = useMemo(
+    () => allDevices.filter((d) => d.isActive),
+    [allDevices]
+  );
 
   // Filter by search query for the sidebar list
-  const filteredDevices = activeDevices.filter(
-    (device) =>
-      device.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      device.type.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredDevices = useMemo(
+    () =>
+      activeDevices.filter(
+        (device) =>
+          device.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          device.type.toLowerCase().includes(searchQuery.toLowerCase())
+      ),
+    [activeDevices, searchQuery]
   );
+
+  const activeDeviceIds = useMemo(
+    () => activeDevices.map((device) => device.id),
+    [activeDevices]
+  );
+  const telemetryKeys = useMemo(() => ["latitude", "longitude"], []);
+
+  useMultipleTelemetry(activeDeviceIds, { keys: telemetryKeys });
 
   const activeCount = statsData?.active ?? activeDevices.length;
   const inactiveCount = statsData?.inactive ?? 0;

@@ -17,6 +17,7 @@ export interface JWTPayload {
   role: string;
   tbToken: string;
   tbRefreshToken: string;
+  tbTenantId?: string;
 }
 
 /**

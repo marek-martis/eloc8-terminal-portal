@@ -44,22 +44,35 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Build query parameters
-    const queryParams = new URLSearchParams({
-      pageSize,
-      page,
-      sortProperty: "createdTime",
-      sortOrder: "DESC",
-    });
-
-    if (startTs) queryParams.set("startTime", startTs);
-    if (endTs) queryParams.set("endTime", endTs);
-
     // Call ThingsBoard events API directly
     const tbClient = createThingsboardClient({
       accessToken: session.tbToken,
       refreshToken: session.tbRefreshToken,
     });
+
+    let tenantId = session.tbTenantId;
+    if (!tenantId) {
+      const tbUser = await tbClient.getCurrentUser();
+      tenantId = tbUser.tenantId.id;
+    }
+    if (!tenantId) {
+      return NextResponse.json(
+        { message: "Tenant ID is required" },
+        { status: 500 }
+      );
+    }
+
+    // Build query parameters
+    const queryParams = new URLSearchParams({
+      tenantId,
+      pageSize,
+      page,
+      sortProperty: "ts",
+      sortOrder: "DESC",
+    });
+
+    if (startTs) queryParams.set("startTime", startTs);
+    if (endTs) queryParams.set("endTime", endTs);
 
     const tokens = tbClient.getTokens();
 

@@ -58,6 +58,7 @@ export async function POST(request: Request) {
       role: user.role,
       tbToken: authResponse.token,
       tbRefreshToken: authResponse.refreshToken,
+      tbTenantId: tbUser.tenantId.id,
     });
 
     const cookieStore = await cookies();

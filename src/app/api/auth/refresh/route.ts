@@ -25,6 +25,7 @@ export async function POST() {
       role: session.role,
       tbToken: newTbToken,
       tbRefreshToken: tokens.refreshToken || session.tbRefreshToken,
+      tbTenantId: session.tbTenantId,
     });
 
     const cookieStore = await cookies();

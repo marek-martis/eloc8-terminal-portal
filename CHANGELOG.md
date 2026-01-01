@@ -42,6 +42,7 @@ All notable changes to this project will be documented in this file.
 - Device type summary API endpoint (`/api/devices/type-summary`) for analytics charts
 - Devices API now supports status filtering (`status=active|inactive`) using `lastActivityTime`
 - Stale devices table export for CSV and XLSX
+- Live Tracking Map now streams location updates via WebSocket telemetry (latitude/longitude)
 
 ### Changed
 - **Migrated `middleware.ts` to `proxy.ts`** for Next.js 16 compatibility (renamed function from `middleware` to `proxy`)
@@ -68,6 +69,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - Database connection from host machine for Prisma migrations
+- ThingsBoard events API requests now include required tenantId query param
 - WebSocket provider self-referencing callback lint error
 - Improved API error handling with specific error messages for JWT failures (401) and ThingsBoard API errors (502)
 - ThingsBoard client now correctly detects token expiry by decoding JWT instead of assuming fixed expiry
