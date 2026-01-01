@@ -25,10 +25,14 @@ export async function POST(request: Request) {
 
     // Parse request body for optional staleDays parameter
     let staleDays = DEFAULT_STALE_DAYS;
+    let forceOverwrite = false;
     try {
       const body = await request.json();
       if (body.staleDays && typeof body.staleDays === "number") {
         staleDays = body.staleDays;
+      }
+      if (typeof body.forceOverwrite === "boolean") {
+        forceOverwrite = body.forceOverwrite;
       }
     } catch {
       // No body or invalid JSON, use default
@@ -42,10 +46,22 @@ export async function POST(request: Request) {
       where: { snapshotDate: today },
     });
 
-    if (existingSnapshot) {
+    if (existingSnapshot && !forceOverwrite) {
       return NextResponse.json({
         message: "Snapshot already exists for today",
         snapshot: existingSnapshot,
+      });
+    }
+
+    if (existingSnapshot && forceOverwrite) {
+      if (!session) {
+        return NextResponse.json(
+          { message: "Valid session required to overwrite snapshot" },
+          { status: 401 }
+        );
+      }
+      await prisma.staleDeviceSnapshot.delete({
+        where: { id: existingSnapshot.id },
       });
     }
 

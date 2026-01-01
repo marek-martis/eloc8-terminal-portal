@@ -28,6 +28,7 @@ All notable changes to this project will be documented in this file.
 - New Prisma models: `StaleDeviceSnapshot`, `StaleDeviceRecord`
 - New hooks: `useStaleDeviceSnapshots`, `useAvailableSnapshotDates`, `useTriggerSnapshot`
 - Sortable table headers in stale devices page (click to sort by Device, Type, Last Activity, Days Inactive, Days on List)
+- Optional force overwrite for today's stale device snapshot
 
 #### Phase 5: Dashboard
 - Dashboard landing page with fleet overview (total, active, inactive device counts)
@@ -42,7 +43,8 @@ All notable changes to this project will be documented in this file.
 - Device type summary API endpoint (`/api/devices/type-summary`) for analytics charts
 - Devices API now supports status filtering (`status=active|inactive`) using `lastActivityTime`
 - Stale devices table export for CSV and XLSX
-- Live Tracking Map now streams location updates via WebSocket telemetry (latitude/longitude)
+- Live Tracking Map refresh interval selector (30s/1m/5m/10m)
+- Active Devices list shows last telemetry timestamp and supports sorting by last update
 
 ### Changed
 - **Migrated `middleware.ts` to `proxy.ts`** for Next.js 16 compatibility (renamed function from `middleware` to `proxy`)
@@ -52,6 +54,7 @@ All notable changes to this project will be documented in this file.
 - Map page and Dashboard now show "Active/Inactive" instead of "Online/Offline"
 - **Live Map now displays only active devices** (inactive devices filtered out)
 - Map only fits bounds on initial load, preserving user zoom level
+- Live Tracking Map now polls `/api/devices` instead of WebSocket subscriptions for updates
 - **Stats API now uses ThingsBoard `entitiesQuery/count` for O(1) device counting** (2 API calls instead of N+1)
 - Devices API now supports `fetchAll=true`, plus `sortBy`/`sortDir` for server-side sorting
 - Analytics page uses paged device search for selectors instead of loading all devices

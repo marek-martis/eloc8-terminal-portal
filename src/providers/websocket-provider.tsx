@@ -30,6 +30,24 @@ type TelemetryValue =
   | null
   | undefined;
 
+const LATITUDE_KEYS = [
+  "latitude",
+  "lat",
+  "gps_lat",
+  "gps_latitude",
+  "gpslatitude",
+  "gpslat",
+];
+const LONGITUDE_KEYS = [
+  "longitude",
+  "lng",
+  "lon",
+  "gps_lng",
+  "gps_longitude",
+  "gpslongitude",
+  "gpslon",
+];
+
 function normalizeTelemetryValue(value: TelemetryValue) {
   if (Array.isArray(value)) {
     if (value.length === 0) return null;
@@ -63,8 +81,19 @@ function extractNumericTelemetry(
   data: Record<string, unknown>,
   keys: string[]
 ) {
+  const lowerKeyMap = new Map<string, string>();
+  Object.keys(data).forEach((key) => {
+    lowerKeyMap.set(key.toLowerCase(), key);
+  });
+
   for (const key of keys) {
-    const normalized = normalizeTelemetryValue(data[key] as TelemetryValue);
+    const actualKey =
+      data[key] !== undefined ? key : lowerKeyMap.get(key.toLowerCase());
+    if (!actualKey) continue;
+
+    const normalized = normalizeTelemetryValue(
+      data[actualKey] as TelemetryValue
+    );
     if (!normalized) continue;
     const numeric = typeof normalized.value === "number"
       ? normalized.value
@@ -74,6 +103,18 @@ function extractNumericTelemetry(
     }
   }
   return { value: null as number | null, ts: undefined as number | undefined };
+}
+
+function extractLatestTimestamp(data: Record<string, unknown>) {
+  let latest = 0;
+  for (const value of Object.values(data)) {
+    const normalized = normalizeTelemetryValue(value as TelemetryValue);
+    const ts = normalized?.ts ?? 0;
+    if (ts > latest) {
+      latest = ts;
+    }
+  }
+  return latest > 0 ? latest : undefined;
 }
 
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {
@@ -112,18 +153,17 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       if (message.subscriptionId !== undefined && message.data) {
         const deviceId = subscriptionsRef.current.get(message.subscriptionId);
         if (deviceId) {
-          const lat = extractNumericTelemetry(message.data, [
-            "latitude",
-            "lat",
-          ]);
-          const lng = extractNumericTelemetry(message.data, [
-            "longitude",
-            "lng",
-          ]);
-          const telemetryTs = Math.max(lat.ts ?? 0, lng.ts ?? 0);
+          const lat = extractNumericTelemetry(message.data, LATITUDE_KEYS);
+          const lng = extractNumericTelemetry(message.data, LONGITUDE_KEYS);
+          const fallbackTs = extractLatestTimestamp(message.data);
+          const telemetryTs = Math.max(
+            lat.ts ?? 0,
+            lng.ts ?? 0,
+            fallbackTs ?? 0
+          );
           const lastTelemetryAt = telemetryTs
             ? new Date(telemetryTs).toISOString()
-            : new Date().toISOString();
+            : undefined;
 
           queryClient.setQueryData(
             ["telemetry", deviceId],
@@ -134,46 +174,60 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
             })
           );
 
-          if (lat.value !== null || lng.value !== null) {
-            queryClient.setQueriesData(
-              {
-                predicate: (query) =>
-                  Array.isArray(query.queryKey) &&
-                  query.queryKey[0] === "devices",
-              },
-              (
-                old:
-                  | { data: Device[]; total: number }
-                  | undefined
-              ) => {
-                if (!old?.data) return old;
-                let updated = false;
-                const nextData = old.data.map((device) => {
-                  if (device.id !== deviceId) return device;
-                  const nextLat =
-                    lat.value !== null ? lat.value : device.location?.lat;
-                  const nextLng =
-                    lng.value !== null ? lng.value : device.location?.lng;
-                  if (
-                    typeof nextLat !== "number" ||
-                    typeof nextLng !== "number" ||
-                    Number.isNaN(nextLat) ||
-                    Number.isNaN(nextLng)
-                  ) {
-                    return device;
-                  }
+          queryClient.setQueriesData(
+            {
+              predicate: (query) =>
+                Array.isArray(query.queryKey) &&
+                query.queryKey[0] === "devices",
+            },
+            (
+              old:
+                | { data: Device[]; total: number }
+                | undefined
+            ) => {
+              if (!old?.data) return old;
+              let updated = false;
+              const nextData = old.data.map((device) => {
+                if (device.id !== deviceId) return device;
+
+                const nextLat =
+                  lat.value !== null ? lat.value : device.location?.lat;
+                const nextLng =
+                  lng.value !== null ? lng.value : device.location?.lng;
+
+                const canUpdateLocation =
+                  typeof nextLat === "number" &&
+                  typeof nextLng === "number" &&
+                  !Number.isNaN(nextLat) &&
+                  !Number.isNaN(nextLng);
+
+                const nextLocation = canUpdateLocation
+                  ? { lat: nextLat, lng: nextLng }
+                  : device.location;
+
+                const nextLastTelemetryAt =
+                  lastTelemetryAt ?? device.lastTelemetryAt;
+
+                if (
+                  !device.isActive ||
+                  nextLastTelemetryAt !== device.lastTelemetryAt ||
+                  nextLocation !== device.location
+                ) {
                   updated = true;
                   return {
                     ...device,
-                    location: { lat: nextLat, lng: nextLng },
-                    lastTelemetryAt,
+                    isActive: true,
+                    location: nextLocation,
+                    lastTelemetryAt: nextLastTelemetryAt,
                   };
-                });
-                if (!updated) return old;
-                return { ...old, data: nextData };
-              }
-            );
-          }
+                }
+
+                return device;
+              });
+              if (!updated) return old;
+              return { ...old, data: nextData };
+            }
+          );
 
           queryClient.invalidateQueries({
             queryKey: ["device", deviceId, "telemetry"],

@@ -1,28 +1,65 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MapContainer } from "@/components/map/map-container";
 import { useDevices } from "@/hooks/use-devices";
-import { useDeviceStats } from "@/hooks/use-device-stats";
-import { useMultipleTelemetry } from "@/hooks/use-telemetry";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Search, Radio } from "lucide-react";
+import { ACTIVE_WINDOW_MINUTES } from "@/lib/constants";
+
+const POLL_OPTIONS = [
+  { label: "30s", value: 30 * 1000 },
+  { label: "1 min", value: 60 * 1000 },
+  { label: "5 min", value: 5 * 60 * 1000 },
+  { label: "10 min", value: 10 * 60 * 1000 },
+] as const;
 
 export default function MapPage() {
-  const { data, isLoading, error } = useDevices({ status: "active", fetchAll: true });
-  const { data: statsData, isLoading: isLoadingStats } = useDeviceStats();
+  const [pollIntervalMs, setPollIntervalMs] = useState<number>(60 * 1000);
+  const { data, isLoading, error } = useDevices(
+    { fetchAll: true },
+    { refetchInterval: pollIntervalMs }
+  );
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>();
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortMode, setSortMode] = useState<"name" | "lastTelemetryAt">("name");
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const allDevices = data?.data || [];
 
+  const devicesWithLiveStatus = useMemo(() => {
+    const activeWindowMs = ACTIVE_WINDOW_MINUTES * 60 * 1000;
+    return allDevices.map((device) => {
+      const lastTelemetryAt = device.lastTelemetryAt
+        ? new Date(device.lastTelemetryAt).getTime()
+        : null;
+      const isActive =
+        lastTelemetryAt !== null &&
+        !Number.isNaN(lastTelemetryAt) &&
+        now - lastTelemetryAt <= activeWindowMs;
+      return { ...device, isActive };
+    });
+  }, [allDevices, now]);
+
   // Only show active devices on the map
   const activeDevices = useMemo(
-    () => allDevices.filter((d) => d.isActive),
-    [allDevices]
+    () => devicesWithLiveStatus.filter((d) => d.isActive),
+    [devicesWithLiveStatus]
   );
 
   // Filter by search query for the sidebar list
@@ -36,16 +73,26 @@ export default function MapPage() {
     [activeDevices, searchQuery]
   );
 
-  const activeDeviceIds = useMemo(
-    () => activeDevices.map((device) => device.id),
-    [activeDevices]
-  );
-  const telemetryKeys = useMemo(() => ["latitude", "longitude"], []);
+  const sortedDevices = useMemo(() => {
+    const next = [...filteredDevices];
+    if (sortMode === "lastTelemetryAt") {
+      next.sort((a, b) => {
+        const aTime = a.lastTelemetryAt
+          ? new Date(a.lastTelemetryAt).getTime()
+          : 0;
+        const bTime = b.lastTelemetryAt
+          ? new Date(b.lastTelemetryAt).getTime()
+          : 0;
+        return bTime - aTime;
+      });
+    } else {
+      next.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return next;
+  }, [filteredDevices, sortMode]);
 
-  useMultipleTelemetry(activeDeviceIds, { keys: telemetryKeys });
-
-  const activeCount = statsData?.active ?? activeDevices.length;
-  const inactiveCount = statsData?.inactive ?? 0;
+  const activeCount = activeDevices.length;
+  const inactiveCount = devicesWithLiveStatus.length - activeCount;
 
   if (error) {
     return (
@@ -62,18 +109,41 @@ export default function MapPage() {
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium">Device Status</CardTitle>
           </CardHeader>
-          <CardContent className="flex gap-4">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-green-500" />
-              <span className="text-sm">
-                {isLoadingStats ? "…" : activeCount} Active
-              </span>
+          <CardContent className="flex flex-col gap-3">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-green-500" />
+                <span className="text-sm">
+                  {isLoading ? "…" : activeCount} Active
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-gray-400" />
+                <span className="text-sm">
+                  {isLoading ? "…" : inactiveCount} Inactive
+                </span>
+              </div>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-gray-400" />
-              <span className="text-sm">
-                {isLoadingStats ? "…" : inactiveCount} Inactive
-              </span>
+              <span className="text-xs text-muted-foreground">Refresh</span>
+              <Select
+                value={String(pollIntervalMs)}
+                onValueChange={(value) => setPollIntervalMs(Number(value))}
+              >
+                <SelectTrigger className="h-8 w-[120px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {POLL_OPTIONS.map((option) => (
+                    <SelectItem
+                      key={option.value}
+                      value={String(option.value)}
+                    >
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </CardContent>
         </Card>
@@ -96,6 +166,24 @@ export default function MapPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
+            <div className="px-4 pb-2 pt-1">
+              <Select
+                value={sortMode}
+                onValueChange={(value) =>
+                  setSortMode(value as "name" | "lastTelemetryAt")
+                }
+              >
+                <SelectTrigger className="h-8 w-[180px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="name">Sort: Name</SelectItem>
+                  <SelectItem value="lastTelemetryAt">
+                    Sort: Last update
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="max-h-[calc(100vh-380px)] overflow-y-auto">
               {isLoading ? (
                 <div className="p-4 space-y-3">
@@ -105,7 +193,7 @@ export default function MapPage() {
                 </div>
               ) : (
                 <ul className="divide-y">
-                  {filteredDevices.map((device) => (
+                  {sortedDevices.map((device) => (
                     <li
                       key={device.id}
                       onClick={() => setSelectedDeviceId(device.id)}
@@ -130,6 +218,12 @@ export default function MapPage() {
                           {device.location.lng.toFixed(4)}
                         </p>
                       )}
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Last update:{" "}
+                        {device.lastTelemetryAt
+                          ? new Date(device.lastTelemetryAt).toLocaleString()
+                          : "—"}
+                      </p>
                     </li>
                   ))}
                 </ul>

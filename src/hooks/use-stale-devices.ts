@@ -93,6 +93,7 @@ export function useAvailableSnapshotDates() {
 
 interface TriggerSnapshotParams {
   staleDays?: number;
+  forceOverwrite?: boolean;
 }
 
 interface SnapshotResult {

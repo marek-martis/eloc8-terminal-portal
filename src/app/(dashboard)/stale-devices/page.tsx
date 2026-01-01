@@ -288,6 +288,7 @@ export default function StaleDevicesPage() {
   const [compareDate, setCompareDate] = useState<string>(yesterday);
   const [threshold, setThreshold] = useState<number>(2);
   const [selectedProfiles, setSelectedProfiles] = useState<string[]>([]);
+  const [forceOverwrite, setForceOverwrite] = useState(false);
 
   const { data: datesData } = useAvailableSnapshotDates();
   const { data: profilesData, isLoading: isLoadingProfiles } =
@@ -356,7 +357,10 @@ export default function StaleDevicesPage() {
 
   const handleTriggerSnapshot = async () => {
     try {
-      await triggerSnapshot.mutateAsync({ staleDays: threshold });
+      await triggerSnapshot.mutateAsync({
+        staleDays: threshold,
+        forceOverwrite,
+      });
     } catch (error) {
       console.error("Failed to trigger snapshot:", error);
     }
@@ -447,6 +451,15 @@ export default function StaleDevicesPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={forceOverwrite}
+              onChange={(event) => setForceOverwrite(event.target.checked)}
+            />
+            Force overwrite today
+          </label>
           <Button
             variant="outline"
             size="sm"

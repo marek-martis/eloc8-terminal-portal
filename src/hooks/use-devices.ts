@@ -26,7 +26,11 @@ export interface Device {
   lastTelemetryAt?: string;
 }
 
-export function useDevices(filters?: DeviceFilters) {
+interface UseDevicesOptions {
+  refetchInterval?: number | false;
+}
+
+export function useDevices(filters?: DeviceFilters, options?: UseDevicesOptions) {
   return useQuery({
     queryKey: ["devices", filters],
     queryFn: async () => {
@@ -45,6 +49,7 @@ export function useDevices(filters?: DeviceFilters) {
       return response.json() as Promise<{ data: Device[]; total: number }>;
     },
     staleTime: 30 * 1000,
+    refetchInterval: options?.refetchInterval,
   });
 }
 
@@ -52,8 +57,11 @@ export function useDevices(filters?: DeviceFilters) {
  * Hook to fetch all devices (handles pagination internally)
  * Use this for analytics, reports, or anywhere you need the complete device list
  */
-export function useAllDevices(filters?: Omit<DeviceFilters, "page" | "pageSize" | "fetchAll">) {
-  return useDevices({ ...filters, fetchAll: true });
+export function useAllDevices(
+  filters?: Omit<DeviceFilters, "page" | "pageSize" | "fetchAll">,
+  options?: UseDevicesOptions
+) {
+  return useDevices({ ...filters, fetchAll: true }, options);
 }
 
 export function useDevice(deviceId: string | undefined) {
