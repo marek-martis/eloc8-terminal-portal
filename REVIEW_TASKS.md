@@ -9,5 +9,5 @@
 - [x] Limit telemetry fan-out by adding concurrency controls or using a bulk/aggregate ThingsBoard endpoint instead of hundreds of parallel calls.
 
 ## Quality & Documentation
-- [ ] Add tests for `useDeviceStats`, the stats API route (happy path, invalid `staleDays`, auth failure, telemetry gaps), and dashboard card rendering/error state.
+- [x] Add tests for `useDeviceStats`, the stats API route (happy path, invalid `staleDays`, auth failure, telemetry gaps), and dashboard card rendering/error state.
 - [x] Document the default staleness window and override path in `README.md` or `AGENTS.md` so ops understand how counts are derived.
