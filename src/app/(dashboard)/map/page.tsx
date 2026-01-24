@@ -26,7 +26,7 @@ const POLL_OPTIONS = [
 
 export default function MapPage() {
   const [pollIntervalMs, setPollIntervalMs] = useState<number>(60 * 1000);
-  const { data, isLoading, error } = useDevices(
+  const { data, isLoading, error, dataUpdatedAt } = useDevices(
     { fetchAll: true },
     { refetchInterval: pollIntervalMs }
   );
@@ -35,12 +35,17 @@ export default function MapPage() {
   const [sortMode, setSortMode] = useState<"name" | "lastTelemetryAt">("name");
   const [now, setNow] = useState(() => Date.now());
 
+  // Update `now` on a regular interval
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 
   const allDevices = data?.data || [];
+
+  // Use dataUpdatedAt to get current time when data refreshes
+  // This ensures new active devices appear immediately after a refetch
+  const effectiveNow = dataUpdatedAt || now;
 
   const devicesWithLiveStatus = useMemo(() => {
     const activeWindowMs = ACTIVE_WINDOW_MINUTES * 60 * 1000;
@@ -51,10 +56,10 @@ export default function MapPage() {
       const isActive =
         lastTelemetryAt !== null &&
         !Number.isNaN(lastTelemetryAt) &&
-        now - lastTelemetryAt <= activeWindowMs;
+        effectiveNow - lastTelemetryAt <= activeWindowMs;
       return { ...device, isActive };
     });
-  }, [allDevices, now]);
+  }, [allDevices, effectiveNow]);
 
   // Only show active devices on the map
   const activeDevices = useMemo(

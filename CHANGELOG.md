@@ -77,6 +77,7 @@ All notable changes to this project will be documented in this file.
 - Refactored all API routes to use shared auth utility
 
 ### Fixed
+- **Live Map now loads new active devices on refresh** - previously only removed inactive devices due to stale timestamp comparison
 - Database connection from host machine for Prisma migrations
 - ThingsBoard events API requests now include required tenantId query param
 - WebSocket provider self-referencing callback lint error
