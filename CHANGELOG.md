@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Stale device detection now uses `lastMidReceived` server attribute** instead of `lastActivityTime`
+- Devices missing the `lastMidReceived` attribute entirely are now also considered stale (never reported)
+- Added `findDevicesMissingLastMidReceived()` method to ThingsBoard client for two-query stale detection
+- **Increased active device window from 5 to 15 minutes** - devices are now considered active on the Live Map if they've had activity within the last 15 minutes
+
 ### Added
 
 #### Phase 1: Analytics & Reporting

@@ -17,7 +17,7 @@ export const DEFAULT_STALE_DAYS = 2;
 /**
  * Devices with lastActivityTime within this window are considered active.
  */
-export const ACTIVE_WINDOW_MINUTES = 5;
+export const ACTIVE_WINDOW_MINUTES = 15;
 
 /**
  * Date range presets for analytics

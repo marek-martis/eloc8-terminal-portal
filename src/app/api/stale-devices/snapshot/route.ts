@@ -78,8 +78,9 @@ export async function POST(request: Request) {
       refreshToken: session.tbRefreshToken,
     });
 
-    // Use optimized entitiesQuery/find API to fetch stale devices directly
-    // This is much more efficient than fetching all devices + N attribute calls
+    // Collect stale devices from two sources:
+    // 1. Devices where lastMidReceived < cutoffTime
+    // 2. Devices missing the lastMidReceived attribute entirely
     const staleDevices: Array<{
       id: string;
       name: string;
@@ -88,6 +89,9 @@ export async function POST(request: Request) {
       lastActivityAt?: string;
     }> = [];
 
+    const staleDeviceIds = new Set<string>();
+
+    // Query 1: Find devices where lastMidReceived is older than threshold
     let page = 0;
     let hasMore = true;
 
@@ -99,10 +103,10 @@ export async function POST(request: Request) {
       });
 
       for (const device of response.data) {
-        const activityValue = typeof device.lastActivityTime === "number"
-          ? device.lastActivityTime
-          : device.lastActivityTime
-            ? Number(device.lastActivityTime)
+        const activityValue = typeof device.lastMidReceived === "number"
+          ? device.lastMidReceived
+          : device.lastMidReceived
+            ? Number(device.lastMidReceived)
             : null;
         const activityDate = activityValue && Number.isFinite(activityValue)
           ? new Date(activityValue)
@@ -117,10 +121,38 @@ export async function POST(request: Request) {
             ? activityDate.toISOString()
             : undefined,
         });
+        staleDeviceIds.add(device.entityId.id);
       }
 
       hasMore = response.hasNext;
       page++;
+    }
+
+    // Query 2: Find devices missing the lastMidReceived attribute entirely
+    let missingPage = 0;
+    let hasMoreMissing = true;
+
+    while (hasMoreMissing) {
+      const response = await tbClient.findDevicesMissingLastMidReceived({
+        page: missingPage,
+        pageSize: 1000,
+        excludeDeviceIds: staleDeviceIds,
+      });
+
+      for (const device of response.data) {
+        // Devices without lastMidReceived have never reported
+        staleDevices.push({
+          id: device.entityId.id,
+          name: device.name,
+          type: device.type,
+          deviceProfileId: device.deviceProfileId,
+          lastActivityAt: undefined, // Never reported
+        });
+        staleDeviceIds.add(device.entityId.id);
+      }
+
+      hasMoreMissing = response.hasNext;
+      missingPage++;
     }
 
     // Get total device count for the snapshot (using efficient count API)

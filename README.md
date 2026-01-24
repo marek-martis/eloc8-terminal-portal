@@ -23,6 +23,7 @@ A logistics-focused dashboard for real-time GPS device tracking, built with Next
 - Configurable stale threshold (1 day to 1 month)
 - Filter by device profile
 - Cron-triggerable API endpoint for automation
+- Uses `lastMidReceived` server attribute (devices missing this attribute are also considered stale)
 
 ## Tech Stack
 
@@ -143,6 +144,28 @@ The portal authenticates users against ThingsBoard:
 | `POST /api/stale-devices/snapshot` | Trigger snapshot |
 | `GET /api/export/csv` | Export to CSV |
 | `GET /api/export/pdf` | Export to PDF |
+
+## Configuration Constants
+
+Key thresholds are defined in `src/lib/constants.ts`:
+
+| Constant | Default | Description |
+|----------|---------|-------------|
+| `ACTIVE_WINDOW_MINUTES` | 15 | Devices with `lastActivityTime` within this window are shown as "active" on the Live Map and dashboard |
+| `DEFAULT_STALE_DAYS` | 2 | Devices without `lastMidReceived` within this period are considered stale |
+
+### Overriding Stale Days
+
+The stale device snapshot API accepts a `staleDays` parameter (1-365) to override the default:
+
+```bash
+# Trigger snapshot with 7-day threshold
+curl -X POST /api/stale-devices/snapshot \
+  -H "Content-Type: application/json" \
+  -d '{"staleDays": 7}'
+```
+
+The stale devices page also allows selecting different thresholds (1 day to 1 month) per-report.
 
 ## License
 

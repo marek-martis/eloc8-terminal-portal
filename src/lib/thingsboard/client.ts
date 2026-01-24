@@ -317,9 +317,9 @@ export class ThingsboardClient {
   }
 
   /**
-   * Find stale devices using the entitiesQuery/find API.
-   * Much more efficient than fetching all devices and their attributes separately.
-   * Returns devices with lastActivityTime < cutoffTime, along with their attributes.
+   * Find devices where lastMidReceived is older than the stale threshold.
+   * Note: This does NOT include devices missing the attribute entirely.
+   * Use findDevicesMissingLastMidReceived() for those.
    */
   async findStaleDevices(params: {
     staleDays: number;
@@ -331,7 +331,7 @@ export class ThingsboardClient {
       name: string;
       type: string;
       deviceProfileId?: string;
-      lastActivityTime?: number;
+      lastMidReceived?: number;
     }>;
     totalElements: number;
     totalPages: number;
@@ -364,7 +364,7 @@ export class ThingsboardClient {
           {
             key: {
               type: "SERVER_ATTRIBUTE",
-              key: "lastActivityTime",
+              key: "lastMidReceived",
             },
             valueType: "NUMERIC",
             predicate: {
@@ -383,7 +383,7 @@ export class ThingsboardClient {
           { type: "ENTITY_FIELD", key: "deviceProfileId" },
         ],
         latestValues: [
-          { type: "SERVER_ATTRIBUTE", key: "lastActivityTime" },
+          { type: "SERVER_ATTRIBUTE", key: "lastMidReceived" },
         ],
         pageLink: {
           page,
@@ -403,7 +403,7 @@ export class ThingsboardClient {
         name: item.latest.ENTITY_FIELD?.name?.value || "",
         type: item.latest.ENTITY_FIELD?.type?.value || "",
         deviceProfileId: item.latest.ENTITY_FIELD?.deviceProfileId?.value,
-        lastActivityTime: item.latest.SERVER_ATTRIBUTE?.lastActivityTime?.value,
+        lastMidReceived: item.latest.SERVER_ATTRIBUTE?.lastMidReceived?.value,
       })),
       totalElements: response.totalElements,
       totalPages: response.totalPages,
@@ -412,8 +412,91 @@ export class ThingsboardClient {
   }
 
   /**
+   * Find devices that do not have the lastMidReceived attribute at all.
+   * These are considered stale because they've never reported.
+   */
+  async findDevicesMissingLastMidReceived(params: {
+    pageSize?: number;
+    page?: number;
+    excludeDeviceIds?: Set<string>;
+  }): Promise<{
+    data: Array<{
+      entityId: { id: string; entityType: string };
+      name: string;
+      type: string;
+      deviceProfileId?: string;
+    }>;
+    totalElements: number;
+    totalPages: number;
+    hasNext: boolean;
+  }> {
+    const pageSize = params.pageSize || 1000;
+    const page = params.page || 0;
+
+    // Query all devices with lastMidReceived attribute requested
+    const response = await this.authenticatedRequest<{
+      data: Array<{
+        entityId: { id: string; entityType: string };
+        latest: {
+          ENTITY_FIELD?: Record<string, { ts: number; value: string }>;
+          SERVER_ATTRIBUTE?: Record<string, { ts: number; value: number }>;
+        };
+      }>;
+      totalElements: number;
+      totalPages: number;
+      hasNext: boolean;
+    }>("/api/entitiesQuery/find", {
+      method: "POST",
+      body: JSON.stringify({
+        entityFilter: {
+          type: "entityType",
+          resolveMultiple: true,
+          entityType: "DEVICE",
+        },
+        entityFields: [
+          { type: "ENTITY_FIELD", key: "name" },
+          { type: "ENTITY_FIELD", key: "type" },
+          { type: "ENTITY_FIELD", key: "deviceProfileId" },
+        ],
+        latestValues: [
+          { type: "SERVER_ATTRIBUTE", key: "lastMidReceived" },
+        ],
+        pageLink: {
+          page,
+          pageSize,
+          sortOrder: {
+            key: { key: "name", type: "ENTITY_FIELD" },
+            direction: "ASC",
+          },
+        },
+      }),
+    });
+
+    // Filter to only devices missing the lastMidReceived attribute
+    const devicesWithoutAttribute = response.data.filter((item) => {
+      const hasAttribute = item.latest.SERVER_ATTRIBUTE?.lastMidReceived?.value !== undefined;
+      const isExcluded = params.excludeDeviceIds?.has(item.entityId.id);
+      return !hasAttribute && !isExcluded;
+    });
+
+    return {
+      data: devicesWithoutAttribute.map((item) => ({
+        entityId: item.entityId,
+        name: item.latest.ENTITY_FIELD?.name?.value || "",
+        type: item.latest.ENTITY_FIELD?.type?.value || "",
+        deviceProfileId: item.latest.ENTITY_FIELD?.deviceProfileId?.value,
+      })),
+      // Note: totalElements reflects the filtered count for this page only
+      // The caller should aggregate across all pages
+      totalElements: devicesWithoutAttribute.length,
+      totalPages: response.totalPages,
+      hasNext: response.hasNext,
+    };
+  }
+
+  /**
    * Find all devices (including active ones) using the entitiesQuery/find API.
-   * Returns devices with their lastActivityTime attribute.
+   * Returns devices with their lastMidReceived attribute.
    */
   async findAllDevicesWithActivity(params: {
     pageSize?: number;
@@ -424,7 +507,7 @@ export class ThingsboardClient {
       name: string;
       type: string;
       deviceProfileId?: string;
-      lastActivityTime?: number;
+      lastMidReceived?: number;
     }>;
     totalElements: number;
     totalPages: number;
@@ -458,7 +541,7 @@ export class ThingsboardClient {
           { type: "ENTITY_FIELD", key: "deviceProfileId" },
         ],
         latestValues: [
-          { type: "SERVER_ATTRIBUTE", key: "lastActivityTime" },
+          { type: "SERVER_ATTRIBUTE", key: "lastMidReceived" },
         ],
         pageLink: {
           page,
@@ -478,7 +561,7 @@ export class ThingsboardClient {
         name: item.latest.ENTITY_FIELD?.name?.value || "",
         type: item.latest.ENTITY_FIELD?.type?.value || "",
         deviceProfileId: item.latest.ENTITY_FIELD?.deviceProfileId?.value,
-        lastActivityTime: item.latest.SERVER_ATTRIBUTE?.lastActivityTime?.value,
+        lastMidReceived: item.latest.SERVER_ATTRIBUTE?.lastMidReceived?.value,
       })),
       totalElements: response.totalElements,
       totalPages: response.totalPages,
